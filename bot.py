@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-bot.py - Sistema de registro para finca (versión estandarizada)
+bot.py - Sistema de registro para finca
 Estructura: REGISTRAR: tipo, detalle, cantidad, valor, unidad, lugar, observación
 """
 
@@ -9,8 +9,11 @@ import psycopg2
 from urllib.parse import urlparse
 import re
 import datetime
+from flask import Flask, request, jsonify
 
 print("🔧 Iniciando bot.py...")
+
+app = Flask(__name__)
 
 # === 1. CONEXIÓN A POSTGRESQL ===
 def inicializar_bd():
@@ -355,13 +358,49 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
     return registros
 
 
-# === 7. PROCESAR MENSAJE WHASTAPP ===
+# === 7. COMANDO SECRETO: limpiar bd ===
+def vaciar_tablas():
+    """
+    Borra todos los datos de las tablas del bot.
+    Solo debe ser llamado desde un comando seguro.
+    """
+    try:
+        database_url = os.environ.get("DATABASE_URL")
+        if not database_url:
+            print("❌ DATABASE_URL no está definida.")
+            return "❌ Base de datos no configurada"
+
+        with psycopg2.connect(database_url) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute('''
+                    TRUNCATE TABLE registros, animales, salud_animal, produccion 
+                    RESTART IDENTITY CASCADE;
+                ''')
+            conn.commit()
+        return "✅ Base de datos limpiada. Todo listo para empezar de nuevo."
+    
+    except Exception as e:
+        print(f"❌ Error al limpiar BD: {e}")
+        return "❌ No se pudo limpiar la base de datos."
+
+
+# === 8. PROCESAR MENSAJE WHASTAPP ===
 def procesar_mensaje_whatsapp(mensaje):
     print(f"🔍 [BOT] Procesando mensaje: '{mensaje}'")
     mensaje = mensaje.strip()
     if not mensaje:
         print("❌ Mensaje vacío")
         return "❌ Mensaje vacío."
+
+    # --- COMANDO SECRETO: limpiar bd ---
+    if mensaje.strip().lower() == "limpiar bd":
+        # Cambia este número por el tuyo
+        remitente = request.values.get('From', '')
+        if remitente == "whatsapp:+573143539351":
+            return vaciar_tablas()
+        else:
+            return "❌ Acceso denegado. Comando no autorizado."
+    # -------------------------------------
 
     # Comandos de reporte
     mensaje_lower = mensaje.lower()
@@ -481,6 +520,26 @@ def procesar_mensaje_whatsapp(mensaje):
     return "❌ Formato incorrecto. Usa: REGISTRAR: tipo, detalle, cantidad, valor, unidad, lugar, observación"
 
 
-# === 8. EJECUCIÓN ===
+# === 9. WEBHOOK TWILIO ===
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    try:
+        incoming_msg = request.values.get('Body', '').strip()
+        print(f"📩 MENSAJE RECIBIDO: '{incoming_msg}' desde {request.values.get('From')}")
+        
+        respuesta = procesar_mensaje_whatsapp(incoming_msg)
+        print(f"✅ RESPUESTA GENERADA: {respuesta}")
+        
+        from twilio.twiml.messaging_response import MessagingResponse
+        resp = MessagingResponse()
+        resp.message(respuesta)
+        return str(resp)
+    except Exception as e:
+        print(f"❌ Error en webhook: {e}")
+        return "Error", 500
+
+
+# === 10. INICIALIZAR Y EJECUTAR ===
 if __name__ == "__main__":
-    inicializar_bd()
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
