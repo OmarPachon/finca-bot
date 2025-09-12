@@ -44,6 +44,17 @@ except Exception as e:
 
 app = Flask(__name__)
 
+
+# === RUTA PRINCIPAL: Evita el 404 en Render ===
+@app.route("/")
+def home():
+    """
+    Punto de acceso principal. Usado por Render para health check.
+    """
+    return "🌱 Finca Digital Bot está activo y funcionando", 200
+
+
+# === WEBHOOK PARA TWILIO (WhatsApp) ===
 @app.route("/webhook", methods=["POST"])
 def webhook():
     print("🔍 [WEBHOOK] Entrando al endpoint /webhook")
