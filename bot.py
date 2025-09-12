@@ -101,19 +101,26 @@ except Exception as e:
     BD_OK = False
 
 
-# === 2. SINÓNIMOS AMPLIADOS ===
+# === 2. SINÓNIMOS AMPLIADOS (con cambios acordados)
 SINONIMOS = {
     "siembra": ["sembrar", "sembramos", "siembra", "plantar", "plantamos", "pusimos semilla", "resiembra", "resembramos"],
     "cosecha": ["cosechar", "cosechamos", "cosecha", "cortar", "recolectar", "recolectamos", "descacotamos", "descacotar"],
-    "alimentacion": ["alimentar", "alimentamos", "dar de comer", "echamos comida", "comida", "alimento", "concentrado"],
-    "vacunacion": ["vacunar", "vacunamos", "vacuna", "inyectar", "pusimos vacuna", "inyección", "vacuno", "aftosa", "brucelosis"],
-    "desparasitacion": ["desparasitar", "desparasitamos", "purgar", "dar desparasitante"],
     "reproduccion": ["monta", "preñez", "preñada", "inseminada", "inseminacion", "cubierta", "cubiertas", "cerda", "verraco", "toro", "novillo", "vaquilla", "nacimiento", "parto"],
     "labor": [
         "fumigar", "fumigamos", "rociar", "castramos", "curamos", "insecticida",
         "herbicida", "castrar", "poda", "control de plagas", "cerca", "cercamos",
-        "limpiar", "abonamos", "podar", "podamos", "lavar", "arreglar", "reparar",
-        "abonar", "aserrar", "lavado", "macaneadora", "macaneo", "destete", "marcacion", "marcaje","macaneamos" "reparacion"
+        "limpiar", "abonamos", "podar", "podamos", "lavar", "reparar",
+        "abonar", "aserrar", "lavado", "macaneadora", "macaneo", "destete", "marcacion", "marcaje", "macaneamos", "reparacion",
+        # Alimentación integrada aquí
+        "alimentar", "alimentamos", "dar de comer", "echamos comida", "comida", "alimento", "concentrado"
+    ],
+    "sanidad_animal": [
+        # Vacunación
+        "vacunar", "vacunamos", "vacuna", "inyectar", "pusimos vacuna", "inyección", "vacuno",
+        "aftosa", "brucelosis", "fiebre aftosa", "virus", "inmunizar", "refuerzo",
+        # Desparasitación
+        "desparasitar", "desparasitamos", "purgar", "dar desparasitante", "desparacitamos",
+        "lombrices", "parásitos", "gusanos", "vermífugo", "desparacitación", "desparacito"
     ],
     "produccion": ["carne", "kg", "kilos", "peso cerdo", "peso vaca", "salieron", "rendimiento", "cosechamos", "sacamos", "leche", "litros", "ordeñar", "producción", "lechón", "ternero", "ternera"],
     "inventario": ["llego", "ingreso", "compramos", "recibimos", "se compro", "se pidio", "se compraron", "pedimos", "nacio", "nacieron"],
@@ -251,6 +258,7 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
         siembras = [r for r in registros if r[1] == "siembra"]
         cosechas = [r for r in registros if r[1] == "cosecha"]
         labores = [r for r in registros if r[1] == "labor"]
+        sanidad = [r for r in registros if r[1] == "sanidad_animal"]
         produccion = [r for r in registros if r[1] == "produccion"]
         insumos = [r for r in registros if r[1] == "inventario" and "insumo" in (r[2] or '')]
         gastos = [r for r in registros if r[1] == "gasto"]
@@ -279,7 +287,7 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
                 lines.append(desc)
             lines.append("")
 
-        # LABORES
+        # LABORES (incluye alimentación)
         if labores:
             lines.append("🛠️ LABORES")
             for row in labores:
@@ -287,6 +295,20 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
                 if row[4]: desc += f" en {row[4]}"
                 if row[5] and "jornal" in (row[3] or row[8] or ''): 
                     desc += f" ({row[5]} jornales)"
+                # Diferenciar visualmente la alimentación
+                if any(x in (row[3] or '').lower() for x in ['comida', 'alimento', 'alimentar']):
+                    desc = f"🍽️ {desc}"
+                if row[8]: desc += f". Obs: {row[8]}"
+                lines.append(desc)
+            lines.append("")
+
+        # SANIDAD ANIMAL (vacunación + desparasitación)
+        if sanidad:
+            lines.append("💉 SANIDAD ANIMAL")
+            for row in sanidad:
+                desc = f"• {row[3] or 'tratamiento'}"
+                if row[4]: desc += f" en {row[4]}"
+                if row[5]: desc += f" ({row[5]} {row[7]})"
                 if row[8]: desc += f". Obs: {row[8]}"
                 lines.append(desc)
             lines.append("")
@@ -464,8 +486,8 @@ def procesar_mensaje_whatsapp(mensaje, remitente=None):
             guardar_registro("cosecha", "cosecha", detalle, lugar, cantidad, 0, unidad, observacion)
             respuesta_detalle.append(f"cosecha de {detalle}")
 
-        # Labor
-        elif "labor" in tipo or any(lab in tipo for lab in ["fumigar", "poda", "limpiar", "reparar"]):
+        # Labor (incluye alimentación)
+        elif "labor" in tipo or any(lab in tipo for lab in ["fumigar", "poda", "limpiar", "reparar", "alimentar"]):
             guardar_registro("labor", "labor", detalle, lugar, cantidad, valor, unidad, observacion)
             if cantidad and "jornal" in (unidad or detalle or ''):
                 respuesta_detalle.append(f"{int(cantidad)} jornales")
@@ -474,6 +496,11 @@ def procesar_mensaje_whatsapp(mensaje, remitente=None):
                     respuesta_detalle.append(f"gasto: ${valor:,.0f}")
             else:
                 respuesta_detalle.append(detalle or tipo)
+
+        # Sanidad animal (vacunación + desparasitación)
+        elif "sanidad_animal" in tipo or any(palabra in tipo for palabra in ["vacuna", "inyectar", "desparasitar", "purgar", "desparacitar"]):
+            guardar_registro("sanidad_animal", "sanidad", detalle, lugar, cantidad, valor, unidad, observacion)
+            respuesta_detalle.append(f"sanidad: {detalle}")
 
         # Insumo
         elif "insumo" in tipo:
