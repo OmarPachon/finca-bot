@@ -4,13 +4,15 @@ app.py - Webhook para WhatsApp + Twilio
 """
 
 import os
-import sys  # ← ¡CORREGIDO! Ahora sí está importado
-import traceback
+import sys  # ← ¡Importado! Necesario para sys.path.append
+import traceback  # ← Para manejar errores
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 
 print("🚀 Iniciando app.py...")
-sys.path.append(os.path.dirname(__file__))  # ← Ahora funciona
+
+# Añadir el directorio actual al path para poder importar bot.py
+sys.path.append(os.path.dirname(__file__))
 
 # Intentar importar módulos clave
 try:
@@ -47,7 +49,7 @@ def webhook():
     print("🔍 [WEBHOOK] Entrando al endpoint /webhook")
     
     incoming_msg = request.form.get("Body", "").strip()
-    sender = request.form.get("From", "")
+    sender = request.form.get("From", "")  # Ej: whatsapp:+573143539351
     
     print(f"📩 MENSAJE RECIBIDO: '{incoming_msg}' desde {sender}")
 
@@ -64,7 +66,7 @@ def webhook():
         return str(r)
 
     try:
-        # Pasar el remitente al bot
+        # ✅ Pasamos el remitente para comandos secretos como "limpiar bd"
         respuesta = bot.procesar_mensaje_whatsapp(incoming_msg, remitente=sender)
         print(f"✅ RESPUESTA GENERADA: {respuesta}")
     except Exception as e:
@@ -78,7 +80,9 @@ def webhook():
     return str(r)
 
 
+# === INICIO DEL SERVIDOR ===
 if __name__ == "__main__":
+    # Render usa por defecto el puerto 10000
     port = int(os.environ.get("PORT", 10000))
     print(f"🌍 Servidor iniciando en http://0.0.0.0:{port}")
     app.run(host="0.0.0.0", port=port)
