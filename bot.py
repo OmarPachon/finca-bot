@@ -101,7 +101,7 @@ except Exception as e:
     BD_OK = False
 
 
-# === 2. SINÓNIMOS AMPLIADOS (con cambios acordados)
+# === 2. SINÓNIMOS AMPLIADOS (sin duplicados ni conflictos)
 SINONIMOS = {
     "siembra": ["sembrar", "sembramos", "siembra", "plantar", "plantamos", "pusimos semilla", "resiembra", "resembramos"],
     "cosecha": ["cosechar", "cosechamos", "cosecha", "cortar", "recolectar", "recolectamos", "descacotamos", "descacotar"],
@@ -198,9 +198,11 @@ def registrar_animal(datos):
 
 # === 5. GUARDAR REGISTRO GENERAL (PostgreSQL) ===
 def guardar_registro(tipo_actividad, accion, detalle, lugar=None, cantidad=None, valor=0, unidad=None, observacion=None):
+    print(f"🔍 GUARDANDO REGISTRO: {tipo_actividad} | {detalle} | {lugar} | {cantidad} {unidad}")
     try:
         database_url = os.environ.get("DATABASE_URL")
         if not database_url:
+            print("❌ DATABASE_URL no está definida")
             return
 
         fecha = datetime.date.today().isoformat()
@@ -211,8 +213,11 @@ def guardar_registro(tipo_actividad, accion, detalle, lugar=None, cantidad=None,
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ''', (fecha, tipo_actividad, accion, detalle, lugar, cantidad, valor, unidad, observacion, datetime.datetime.now().isoformat()))
             conn.commit()
+        print(f"✅ REGISTRO GUARDADO: {tipo_actividad} - {detalle}")
     except Exception as e:
-        print(f"❌ Error al guardar registro: {e}")
+        print(f"❌ ERROR AL GUARDAR REGISTRO: {e}")
+        import traceback
+        print(traceback.format_exc())
 
 
 # === 6. GENERAR REPORTE DETALLADO ===
@@ -249,6 +254,7 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
                     FROM registros WHERE fecha >= %s ORDER BY fecha, tipo_actividad
                 """, (inicio.isoformat(),))
                 registros = cursor.fetchall()
+        print(f"📊 Reporte cargado: {len(registros)} registros desde {inicio}")
     except Exception as e:
         return f"❌ Error al leer la base de datos: {e}"
 
@@ -258,7 +264,7 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
         siembras = [r for r in registros if r[1] == "siembra"]
         cosechas = [r for r in registros if r[1] == "cosecha"]
         labores = [r for r in registros if r[1] == "labor"]
-        sanidad = [r for r in registros if r[1] == "sanidad_animal"]
+        sanidad = [r for r in registros if r[1] == "sanidad_animal"]  # ← Clave: debe coincidir
         produccion = [r for r in registros if r[1] == "produccion"]
         insumos = [r for r in registros if r[1] == "inventario" and "insumo" in (r[2] or '')]
         gastos = [r for r in registros if r[1] == "gasto"]
@@ -498,7 +504,7 @@ def procesar_mensaje_whatsapp(mensaje, remitente=None):
                 respuesta_detalle.append(detalle or tipo)
 
         # Sanidad animal (vacunación + desparasitación)
-        elif "sanidad_animal" in tipo or any(palabra in tipo for palabra in ["vacuna", "inyectar", "desparasitar", "purgar", "desparacitar"]):
+        elif "sanidad" in tipo or "vacuna" in tipo or "inyectar" in tipo or "desparasitar" in tipo or "purgar" in tipo:
             guardar_registro("sanidad_animal", "sanidad", detalle, lugar, cantidad, valor, unidad, observacion)
             respuesta_detalle.append(f"sanidad: {detalle}")
 
