@@ -1,3 +1,4 @@
+# Build fix: activar runtime.txt - 2025-09-12
 # -*- coding: utf-8 -*-
 """
 app.py - Webhook para WhatsApp + Twilio
