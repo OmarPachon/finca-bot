@@ -1,10 +1,15 @@
 # -*- coding: utf-8 -*-
+"""
+app.py - Webhook para WhatsApp + Twilio
+"""
+
 import os
-import sys
+import traceback
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 
 print("🚀 Iniciando app.py...")
+
 sys.path.append(os.path.dirname(__file__))
 
 # Intentar importar módulos clave
@@ -48,28 +53,32 @@ def webhook():
 
     if not incoming_msg:
         print("⚠️ Mensaje vacío o no Body")
-    
+        r = MessagingResponse()
+        r.message("❌ Mensaje vacío.")
+        return str(r)
+
     if bot is None:
         print("❌ bot es None, no se puede procesar")
         r = MessagingResponse()
-        r.message("❌ Error: módulo 'bot' no disponible")
+        r.message("❌ Error interno: módulo 'bot' no disponible")
         return str(r)
 
     try:
-        respuesta = bot.procesar_mensaje_whatsapp(incoming_msg)
+        # Pasar el remitente al bot
+        respuesta = bot.procesar_mensaje_whatsapp(incoming_msg, remitente=sender)
         print(f"✅ RESPUESTA GENERADA: {respuesta}")
     except Exception as e:
-        import traceback
         print(f"❌ ERROR EN FUNCION: {type(e).__name__}: {e}")
         print(f"📋 Traceback:\n{traceback.format_exc()}")
-        respuesta = "Hubo un error al procesar tu mensaje. Intenta de nuevo."
+        respuesta = "❌ Hubo un error al procesar tu mensaje. Intenta más tarde."
 
     r = MessagingResponse()
     r.message(respuesta)
     print("📤 [WEBHOOK] Enviando respuesta a Twilio")
     return str(r)
-# Inicio del servidor
+
+
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 10000))
     print(f"🌍 Servidor iniciando en http://0.0.0.0:{port}")
     app.run(host="0.0.0.0", port=port)

@@ -9,11 +9,8 @@ import psycopg2
 from urllib.parse import urlparse
 import re
 import datetime
-from flask import Flask, request, jsonify
 
 print("🔧 Iniciando bot.py...")
-
-app = Flask(__name__)
 
 # === 1. CONEXIÓN A POSTGRESQL ===
 def inicializar_bd():
@@ -385,7 +382,12 @@ def vaciar_tablas():
 
 
 # === 8. PROCESAR MENSAJE WHASTAPP ===
-def procesar_mensaje_whatsapp(mensaje):
+def procesar_mensaje_whatsapp(mensaje, remitente=None):
+    """
+    Procesa un mensaje entrante.
+    :param mensaje: Contenido del mensaje
+    :param remitente: Número del remitente (opcional para comandos secretos)
+    """
     print(f"🔍 [BOT] Procesando mensaje: '{mensaje}'")
     mensaje = mensaje.strip()
     if not mensaje:
@@ -394,9 +396,7 @@ def procesar_mensaje_whatsapp(mensaje):
 
     # --- COMANDO SECRETO: limpiar bd ---
     if mensaje.strip().lower() == "limpiar bd":
-        # Cambia este número por el tuyo
-        remitente = request.values.get('From', '')
-        if remitente == "whatsapp:+573143539351":
+        if remitente == "whatsapp:+573143539351":  # Tu número
             return vaciar_tablas()
         else:
             return "❌ Acceso denegado. Comando no autorizado."
@@ -518,28 +518,3 @@ def procesar_mensaje_whatsapp(mensaje):
         return f"✅ REGISTRAR registrada: {', '.join(respuesta_detalle)}"
 
     return "❌ Formato incorrecto. Usa: REGISTRAR: tipo, detalle, cantidad, valor, unidad, lugar, observación"
-
-
-# === 9. WEBHOOK TWILIO ===
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    try:
-        incoming_msg = request.values.get('Body', '').strip()
-        print(f"📩 MENSAJE RECIBIDO: '{incoming_msg}' desde {request.values.get('From')}")
-        
-        respuesta = procesar_mensaje_whatsapp(incoming_msg)
-        print(f"✅ RESPUESTA GENERADA: {respuesta}")
-        
-        from twilio.twiml.messaging_response import MessagingResponse
-        resp = MessagingResponse()
-        resp.message(respuesta)
-        return str(resp)
-    except Exception as e:
-        print(f"❌ Error en webhook: {e}")
-        return "Error", 500
-
-
-# === 10. INICIALIZAR Y EJECUTAR ===
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
