@@ -4,13 +4,13 @@ app.py - Webhook para WhatsApp + Twilio
 """
 
 import os
+import sys  # ← ¡CORREGIDO! Ahora sí está importado
 import traceback
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 
 print("🚀 Iniciando app.py...")
-
-sys.path.append(os.path.dirname(__file__))
+sys.path.append(os.path.dirname(__file__))  # ← Ahora funciona
 
 # Intentar importar módulos clave
 try:
