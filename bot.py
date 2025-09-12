@@ -113,7 +113,7 @@ SINONIMOS = {
         "fumigar", "fumigamos", "rociar", "castramos", "curamos", "insecticida",
         "herbicida", "castrar", "poda", "control de plagas", "cerca", "cercamos",
         "limpiar", "abonamos", "podar", "podamos", "lavar", "arreglar", "reparar",
-        "abonar", "aserrar", "lavado", "macaneadora", "macaneo", "destete", "marcacion", "marcaje", "reparacion"
+        "abonar", "aserrar", "lavado", "macaneadora", "macaneo", "destete", "marcacion", "marcaje","macaneamos" "reparacion"
     ],
     "produccion": ["carne", "kg", "kilos", "peso cerdo", "peso vaca", "salieron", "rendimiento", "cosechamos", "sacamos", "leche", "litros", "ordeñar", "producción", "lechón", "ternero", "ternera"],
     "inventario": ["llego", "ingreso", "compramos", "recibimos", "se compro", "se pidio", "se compraron", "pedimos", "nacio", "nacieron"],
