@@ -502,10 +502,11 @@ def iniciar_flujo_conversacional(numero, mensaje):
             if tipo_detectado in SINONIMOS:
                 state["data"]["tipo"] = tipo_detectado
                 state["step"] = "waiting_for_detalle"
-                return f"✅ Entendí: {tipo_detectado}. ¿Qué detalle quieres registrar? (Ej: maíz, vacuna aftosa, limpieza)"
+                return f"✅ Entendí: {tipo_detectado}. ¿Qué detalle quieres registrar? (Ej: siembra, vacuna, limpieza)"
 
             return (
-                "🌿 ¡Hola! Bienvenido a Hacienda La Tática.\n\n"
+                "🌿 ¡Hola! Bienvenido al bot de control de Actividades Agropecuarias Hacienda La Tática.\n\n"
+                "Diseñado y elaborado por Omar Alberto Pachon, Cel: 3143539351\n\n"
                 "¿Qué actividad vamos a registrar hoy?\n\n"
                 "1. 🌱 Siembra\n"
                 "2. 🌽 Cosecha\n"
