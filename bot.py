@@ -1,20 +1,19 @@
 # -*- coding: utf-8 -*-
 """
-bot.py - Sistema de registro para finca
-Estructura: REGISTRAR: tipo, detalle, cantidad, valor, unidad, lugar, observación
+bot.py - Sistema de Registro Conversacional para Hacienda La Tática
+Versión final con flujo interactivo + soporte para REGISTRAR: ... (mantenido)
 """
 
 import os
 import psycopg2
-from urllib.parse import urlparse
 import re
 import datetime
+from urllib.parse import urlparse
 
 print("🔧 Iniciando bot.py...")
 
 # === 1. CONEXIÓN A POSTGRESQL ===
 def inicializar_bd():
-    """Conecta a PostgreSQL y crea tablas si no existen"""
     try:
         database_url = os.environ.get("DATABASE_URL")
         if not database_url:
@@ -24,7 +23,6 @@ def inicializar_bd():
         conn = psycopg2.connect(database_url)
         cursor = conn.cursor()
 
-        # Tabla: animales
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS animales (
                 id SERIAL PRIMARY KEY,
@@ -40,7 +38,6 @@ def inicializar_bd():
             )
         ''')
 
-        # Tabla: registros generales
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS registros (
                 id SERIAL PRIMARY KEY,
@@ -57,7 +54,6 @@ def inicializar_bd():
             )
         ''')
 
-        # Tabla: salud_animal
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS salud_animal (
                 id SERIAL PRIMARY KEY,
@@ -70,7 +66,6 @@ def inicializar_bd():
             )
         ''')
 
-        # Tabla: produccion
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS produccion (
                 id SERIAL PRIMARY KEY,
@@ -93,15 +88,13 @@ def inicializar_bd():
         print(f"❌ Error al conectar con PostgreSQL: {e}")
         return False
 
-# Llamar a inicializar_bd() al cargar el módulo
 try:
     BD_OK = inicializar_bd()
 except Exception as e:
     print(f"❌ Error crítico al inicializar BD: {e}")
     BD_OK = False
 
-
-# === 2. SINÓNIMOS AMPLIADOS (sin duplicados ni conflictos)
+# === 2. SINÓNIMOS AMPLIADOS (para detección inteligente) ===
 SINONIMOS = {
     "siembra": ["sembrar", "sembramos", "siembra", "plantar", "plantamos", "pusimos semilla", "resiembra", "resembramos"],
     "cosecha": ["cosechar", "cosechamos", "cosecha", "cortar", "recolectar", "recolectamos", "descacotamos", "descacotar"],
@@ -111,23 +104,24 @@ SINONIMOS = {
         "herbicida", "castrar", "poda", "control de plagas", "cerca", "cercamos",
         "limpiar", "abonamos", "podar", "podamos", "lavar", "reparar",
         "abonar", "aserrar", "lavado", "macaneadora", "macaneo", "destete", "marcacion", "marcaje", "macaneamos", "reparacion",
-        # Alimentación integrada aquí
         "alimentar", "alimentamos", "dar de comer", "echamos comida", "comida", "alimento", "concentrado"
     ],
     "sanidad_animal": [
-        # Vacunación
         "vacunar", "vacunamos", "vacuna", "inyectar", "pusimos vacuna", "inyección", "vacuno",
         "aftosa", "brucelosis", "fiebre aftosa", "virus", "inmunizar", "refuerzo",
-        # Desparasitación
         "desparasitar", "desparasitamos", "purgar", "dar desparasitante", "desparacitamos",
-        "lombrices", "parásitos", "gusanos", "vermífugo", "desparacitación", "desparacito"
+        "lombrices", "parásitos", "gusanos", "vermífugo", "desparacitación", "desparacito",
+        "pastilla", "bolo", "gotas", "cinta", "tratamiento", "medicar", "chequeo", "sanidad"
     ],
     "produccion": ["carne", "kg", "kilos", "peso cerdo", "peso vaca", "salieron", "rendimiento", "cosechamos", "sacamos", "leche", "litros", "ordeñar", "producción", "lechón", "ternero", "ternera"],
     "inventario": ["llego", "ingreso", "compramos", "recibimos", "se compro", "se pidio", "se compraron", "pedimos", "nacio", "nacieron"],
     "gasto": ["gasto", "pagamos", "vendimos", "se murieron", "baja", "muertes", "perdida", "se pago", "se vendio", "vendieron", "factura", "compra", "costo"]
 }
 
-# === 3. DETECTAR ACTIVIDAD ===
+# === 3. ESTADO DEL USUARIO (diccionario en memoria) ===
+user_state = {}
+
+# === 4. DETECTAR ACTIVIDAD (por sinónimos) ===
 def detectar_actividad(mensaje):
     mensaje = mensaje.lower()
     for actividad, palabras in SINONIMOS.items():
@@ -136,8 +130,7 @@ def detectar_actividad(mensaje):
                 return actividad
     return "general"
 
-
-# === 4. REGISTRO DE ANIMAL ===
+# === 5. REGISTRO DE ANIMAL ===
 def extraer_datos_animal(mensaje):
     datos = {"especie": None, "id_externo": None, "marca_o_arete": None, "categoria": None, "corral": None, "peso": None}
     mensaje = mensaje.lower()
@@ -195,8 +188,7 @@ def registrar_animal(datos):
         print(f"❌ Error al registrar animal: {e}")
         return "Hubo un error al registrar el animal."
 
-
-# === 5. GUARDAR REGISTRO GENERAL (PostgreSQL) ===
+# === 6. GUARDAR REGISTRO GENERAL ===
 def guardar_registro(tipo_actividad, accion, detalle, lugar=None, cantidad=None, valor=0, unidad=None, observacion=None):
     print(f"🔍 GUARDANDO REGISTRO: {tipo_actividad} | {detalle} | {lugar} | {cantidad} {unidad}")
     try:
@@ -219,8 +211,7 @@ def guardar_registro(tipo_actividad, accion, detalle, lugar=None, cantidad=None,
         import traceback
         print(traceback.format_exc())
 
-
-# === 6. GENERAR REPORTE DETALLADO ===
+# === 7. GENERAR REPORTE DETALLADO ===
 def generar_reporte(frecuencia="semanal", formato="texto"):
     hoy = datetime.date.today()
 
@@ -264,7 +255,7 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
         siembras = [r for r in registros if r[1] == "siembra"]
         cosechas = [r for r in registros if r[1] == "cosecha"]
         labores = [r for r in registros if r[1] == "labor"]
-        sanidad = [r for r in registros if r[1] == "sanidad_animal"]  # ← Clave: debe coincidir
+        sanidad = [r for r in registros if r[1] == "sanidad_animal"]
         produccion = [r for r in registros if r[1] == "produccion"]
         insumos = [r for r in registros if r[1] == "inventario" and "insumo" in (r[2] or '')]
         gastos = [r for r in registros if r[1] == "gasto"]
@@ -293,7 +284,7 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
                 lines.append(desc)
             lines.append("")
 
-        # LABORES (incluye alimentación)
+        # LABORES
         if labores:
             lines.append("🛠️ LABORES")
             for row in labores:
@@ -301,14 +292,13 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
                 if row[4]: desc += f" en {row[4]}"
                 if row[5] and "jornal" in (row[3] or row[8] or ''): 
                     desc += f" ({row[5]} jornales)"
-                # Diferenciar visualmente la alimentación
                 if any(x in (row[3] or '').lower() for x in ['comida', 'alimento', 'alimentar']):
                     desc = f"🍽️ {desc}"
                 if row[8]: desc += f". Obs: {row[8]}"
                 lines.append(desc)
             lines.append("")
 
-        # SANIDAD ANIMAL (vacunación + desparasitación)
+        # SANIDAD ANIMAL
         if sanidad:
             lines.append("💉 SANIDAD ANIMAL")
             for row in sanidad:
@@ -382,13 +372,8 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
 
     return registros
 
-
-# === 7. COMANDO SECRETO: limpiar bd ===
+# === 8. COMANDO SECRETO ===
 def vaciar_tablas():
-    """
-    Borra todos los datos de las tablas del bot.
-    Solo debe ser llamado desde un comando seguro.
-    """
     try:
         database_url = os.environ.get("DATABASE_URL")
         if not database_url:
@@ -408,18 +393,194 @@ def vaciar_tablas():
         print(f"❌ Error al limpiar BD: {e}")
         return "❌ No se pudo limpiar la base de datos."
 
+# === 9. ESTADO DEL ANIMAL ===
+def consultar_estado_animal(arete):
+    try:
+        database_url = os.environ.get("DATABASE_URL")
+        with psycopg2.connect(database_url) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT especie, estado, peso, corral, fecha_registro, observaciones
+                    FROM animales WHERE id_externo = %s OR marca_o_arete = %s
+                """, (arete, arete))
+                row = cursor.fetchone()
+                if not row:
+                    return f"❌ No encontré ningún animal con arete o marca '{arete}'."
+                
+                especie, estado, peso, corral, fecha_reg, obs = row
+                
+                cursor.execute("""
+                    SELECT tipo, fecha FROM salud_animal 
+                    WHERE id_externo = %s ORDER BY fecha DESC LIMIT 2
+                """, (arete,))
+                salud = cursor.fetchall()
+                vacuna = "N/A"
+                despar = "N/A"
+                for tipo, fecha in salud:
+                    if "vacuna" in tipo.lower() or "aftosa" in tipo.lower():
+                        vacuna = f"{fecha}"
+                    elif "despar" in tipo.lower() or "purgar" in tipo.lower():
+                        despar = f"{fecha}"
+                
+                return (
+                    f"🐷 ANIMAL {arete} ({especie})\n"
+                    f"• Estado: {estado}\n"
+                    f"• Peso: {peso or 'No registrado'} kg\n"
+                    f"• Corral: {corral or 'No asignado'}\n"
+                    f"• Última vacuna: {vacuna}\n"
+                    f"• Última desparasitación: {despar}\n"
+                    f"• Nacido: {fecha_reg}\n"
+                    f"• Observaciones: {obs or 'Sin notas'}"
+                )
+    except Exception as e:
+        return "❌ Error al consultar el animal. Inténtalo más tarde."
 
-# === 8. PROCESAR MENSAJE WHASTAPP ===
+# === 10. FLUJO CONVERSACIONAL ===
+def iniciar_flujo_conversacional(numero, mensaje):
+    """Inicia o continúa el flujo conversacional para un número de WhatsApp"""
+    if numero not in user_state:
+        user_state[numero] = {
+            "step": "waiting_for_category",
+            "data": {
+                "tipo": "",
+                "detalle": "",
+                "cantidad": "",
+                "lugar": "",
+                "observacion": ""
+            }
+        }
+
+    state = user_state[numero]
+    msg = mensaje.strip().lower()
+
+    # === PASO 1: ¿Qué vamos a registrar hoy? ===
+    if state["step"] == "waiting_for_category":
+        if msg in ["fin", "salir", "cancelar", "no", "nada"]:
+            del user_state[numero]
+            return "✅ ¡Gracias por usar Hacienda La Tática! Vuelve cuando necesites."
+
+        if msg in ["1", "siembra", "siembra", "sembrar"]:
+            state["data"]["tipo"] = "siembra"
+            state["step"] = "waiting_for_detalle"
+            return "🌱 ¿Qué sembraste? (Ej: maíz, arroz, papa)"
+        
+        elif msg in ["2", "cosecha", "cosechar"]:
+            state["data"]["tipo"] = "cosecha"
+            state["step"] = "waiting_for_detalle"
+            return "🌽 ¿Qué cosechaste? (Ej: papa, café, maíz)"
+        
+        elif msg in ["3", "sanidad", "vacuna", "desparasitacion", "desparasitar", "inyectar", "tratamiento"]:
+            state["data"]["tipo"] = "sanidad_animal"
+            state["step"] = "waiting_for_detalle"
+            return "💉 ¿Fue una vacuna o una desparasitación? (Ej: vacuna, desparasitación)"
+        
+        elif msg in ["4", "animal", "nacimiento", "nacio", "nacieron"]:
+            state["data"]["tipo"] = "reproduccion"
+            state["step"] = "waiting_for_detalle"
+            return "🐷 ¿Qué tipo de animal nació? (Ej: lechón, ternera, novillo)"
+        
+        elif msg in ["5", "gasto", "pagamos", "compra", "costo"]:
+            state["data"]["tipo"] = "gasto"
+            state["step"] = "waiting_for_detalle"
+            return "💰 ¿Qué gastaste? (Ej: concentrado, medicina, insumo)"
+        
+        elif msg in ["6", "produccion", "producción", "leche", "carne", "kg"]:
+            state["data"]["tipo"] = "produccion"
+            state["step"] = "waiting_for_detalle"
+            return "🥛 ¿Qué produjiste? (Ej: leche, carne, huevos)"
+        
+        elif msg in ["7", "labor", "limpiar", "fumigar", "alimentar", "reparar"]:
+            state["data"]["tipo"] = "labor"
+            state["step"] = "waiting_for_detalle"
+            return "🛠️ ¿Qué labor hiciste? (Ej: limpieza de corral, alimentación, poda)"
+        
+        else:
+            # Detectar por sinónimos
+            tipo_detectado = detectar_actividad(mensaje)
+            if tipo_detectado in SINONIMOS:
+                state["data"]["tipo"] = tipo_detectado
+                state["step"] = "waiting_for_detalle"
+                return f"✅ Entendí: {tipo_detectado}. ¿Qué detalle quieres registrar? (Ej: maíz, vacuna aftosa, limpieza)"
+
+            return (
+                "🌿 ¡Hola! Bienvenido a Hacienda La Tática.\n\n"
+                "¿Qué actividad vamos a registrar hoy?\n\n"
+                "1. 🌱 Siembra\n"
+                "2. 🌽 Cosecha\n"
+                "3. 💉 Sanidad animal\n"
+                "4. 🐷 Nuevo animal\n"
+                "5. 💰 Gasto\n"
+                "6. 🥛 Producción\n"
+                "7. 🛠️ Labor (limpieza, alimentación, etc.)\n\n"
+                "O escribe directamente lo que hiciste (ej: 'vacuné', 'sembré maíz')\n\n"
+                "Escribe 'fin' para salir."
+            )
+
+    # === PASO 2: Detalle ===
+    elif state["step"] == "waiting_for_detalle":
+        state["data"]["detalle"] = mensaje
+        state["step"] = "waiting_for_cantidad"
+        return "🔢 ¿Cuántas unidades? (Ej: 5, 10, 1) — o escribe 'ninguna' si no aplica"
+
+    # === PASO 3: Cantidad ===
+    elif state["step"] == "waiting_for_cantidad":
+        if msg in ["ninguna", "no", "0", "sin"]:
+            state["data"]["cantidad"] = None
+        else:
+            try:
+                state["data"]["cantidad"] = float(msg)
+            except ValueError:
+                return "❌ Por favor, escribe un número (Ej: 5, 10) o 'ninguna'"
+
+        state["step"] = "waiting_for_lugar"
+        return "📍 ¿Dónde fue? (Ej: corral A, lote 3, bodega)"
+
+    # === PASO 4: Lugar ===
+    elif state["step"] == "waiting_for_lugar":
+        state["data"]["lugar"] = mensaje
+        state["step"] = "waiting_for_observacion"
+        return "📝 ¿Quieres agregar alguna observación? (Ej: marcas C-101 a C-105, animales jóvenes, factura #123)\nEscribe 'fin' para guardar sin observación."
+
+    # === PASO 5: Observación ===
+    elif state["step"] == "waiting_for_observacion":
+        if msg in ["fin", "salir", "listo", "guardar"]:
+            state["data"]["observacion"] = ""
+        else:
+            state["data"]["observacion"] = mensaje
+
+        # Guardar en base de datos
+        tipo = state["data"]["tipo"]
+        detalle = state["data"]["detalle"]
+        cantidad = state["data"]["cantidad"]
+        lugar = state["data"]["lugar"]
+        observacion = state["data"]["observacion"]
+
+        # Para animales nuevos, usar registrar_animal()
+        if tipo == "reproduccion":
+            datos = extraer_datos_animal(detalle)
+            if datos["especie"] and datos["marca_o_arete"]:
+                respuesta = registrar_animal(datos)
+                guardar_registro(tipo, "nuevo animal", detalle, lugar, 1, 0, "unidad", observacion)
+                del user_state[numero]
+                return f"{respuesta}\n\n✅ ¡Registro guardado! Vuelve cuando necesites."
+            else:
+                guardar_registro(tipo, "nuevo animal", detalle, lugar, 1, 0, "unidad", observacion)
+                del user_state[numero]
+                return f"✅ Registrado: {detalle} en {lugar}\n\n¡Gracias por registrar!"
+
+        # Para otros tipos
+        else:
+            guardar_registro(tipo, tipo, detalle, lugar, cantidad, 0, "unidad", observacion)
+            del user_state[numero]
+            return f"✅ ¡Registrado! {detalle} ({cantidad or 'sin cantidad'}) en {lugar or 'sin lugar'}\n\n¡Gracias por usar Hacienda La Tática!"
+
+    return "❌ Error interno. Intenta de nuevo."
+
+# === 11. PROCESAR MENSAJE WHASTAPP ===
 def procesar_mensaje_whatsapp(mensaje, remitente=None):
-    """
-    Procesa un mensaje entrante.
-    :param mensaje: Contenido del mensaje
-    :param remitente: Número del remitente (opcional para comandos secretos)
-    """
     print(f"🔍 [BOT] Procesando mensaje: '{mensaje}'")
     mensaje = mensaje.strip()
     if not mensaje:
-        print("❌ Mensaje vacío")
         return "❌ Mensaje vacío."
 
     # --- COMANDO SECRETO: limpiar bd ---
@@ -428,32 +589,39 @@ def procesar_mensaje_whatsapp(mensaje, remitente=None):
             return vaciar_tablas()
         else:
             return "❌ Acceso denegado. Comando no autorizado."
-    # -------------------------------------
 
-    # Comandos de reporte
-    mensaje_lower = mensaje.lower()
-    if "reporte" in mensaje_lower:
-        if "diario" in mensaje_lower:
-            return generar_reporte("diario")
-        elif "quincenal" in mensaje_lower:
-            return generar_reporte("quincenal")
-        elif "mensual" in mensaje_lower:
-            return generar_reporte("mensual")
-        else:
-            return generar_reporte("semanal")
+    # --- COMANDO: estado animal ---
+    if mensaje.lower().startswith("estado animal "):
+        arete = mensaje.split(" ", 2)[2].strip().upper()
+        return consultar_estado_animal(arete)
 
-    # Validación de formato estructurado
-    if ":" in mensaje:
+    # --- COMANDO: ayuda ---
+    if mensaje.strip().lower() in ["ayuda", "help", "ayuda?"]:
+        return (
+            "🌿 ¡Hola! Bienvenido al Bot de Hacienda La Tática.\n\n"
+            "Para registrar una actividad, puedes:\n\n"
+            "1. Usar el modo conversacional: Solo escribe 'hola' o 'hoy vacuné'\n"
+            "2. Usar el modo comando: REGISTRAR: tipo, detalle, cantidad, valor, unidad, lugar, observación\n\n"
+            "Ejemplos de comando:\n"
+            "🔹 REGISTRAR: siembra, maíz, 5, 0, bolsas, lote 3\n"
+            "🔹 REGISTRAR: sanidad, vacuna aftosa, 10, 0, dosis, corral A, marcas M1-M10\n"
+            "🔹 REGISTRAR: gasto, compra concentrado, 0, 150000, COP, bodega, factura #123\n\n"
+            "📊 Reportes:\n"
+            "reporte semanal\n"
+            "reporte diario\n"
+            "reporte mensual\n\n"
+            "🔧 ¿Olvidaste algo? Escribe 'ayuda' otra vez."
+        )
+
+    # --- MODOS DE REGISTRO ---
+
+    # MODELO ANTIGUO: REGISTRAR: tipo, detalle, ...
+    if mensaje.upper().startswith("REGISTRAR:"):
         partes = mensaje.split(":", 1)
-        verbo = partes[0].strip().upper()
         resto = partes[1].strip()
-
-        if verbo != "REGISTRAR":
-            return "❌ Usa solo: REGISTRAR: tipo, detalle, cantidad, valor, unidad, lugar, observación"
-
         campos = [campo.strip() for campo in resto.split(",")]
         if len(campos) < 4:
-            return "❌ Faltan campos. Usa: tipo, detalle, cantidad, valor, unidad, lugar, observación"
+            return "❌ Faltan campos. Usa: REGISTRAR: tipo, detalle, cantidad, valor, unidad, lugar, observación"
 
         tipo = campos[0].lower()
         detalle = campos[1] if len(campos) > 1 else None
@@ -492,7 +660,12 @@ def procesar_mensaje_whatsapp(mensaje, remitente=None):
             guardar_registro("cosecha", "cosecha", detalle, lugar, cantidad, 0, unidad, observacion)
             respuesta_detalle.append(f"cosecha de {detalle}")
 
-        # Labor (incluye alimentación)
+        # Sanidad animal
+        elif "sanidad" in tipo or "vacuna" in tipo or "inyectar" in tipo or "desparasitar" in tipo or "purgar" in tipo:
+            guardar_registro("sanidad_animal", "sanidad", detalle, lugar, cantidad, valor, unidad, observacion)
+            respuesta_detalle.append(f"sanidad: {detalle}")
+
+        # Labor
         elif "labor" in tipo or any(lab in tipo for lab in ["fumigar", "poda", "limpiar", "reparar", "alimentar"]):
             guardar_registro("labor", "labor", detalle, lugar, cantidad, valor, unidad, observacion)
             if cantidad and "jornal" in (unidad or detalle or ''):
@@ -502,11 +675,6 @@ def procesar_mensaje_whatsapp(mensaje, remitente=None):
                     respuesta_detalle.append(f"gasto: ${valor:,.0f}")
             else:
                 respuesta_detalle.append(detalle or tipo)
-
-        # Sanidad animal (vacunación + desparasitación)
-        elif "sanidad" in tipo or "vacuna" in tipo or "inyectar" in tipo or "desparasitar" in tipo or "purgar" in tipo:
-            guardar_registro("sanidad_animal", "sanidad", detalle, lugar, cantidad, valor, unidad, observacion)
-            respuesta_detalle.append(f"sanidad: {detalle}")
 
         # Insumo
         elif "insumo" in tipo:
@@ -550,4 +718,20 @@ def procesar_mensaje_whatsapp(mensaje, remitente=None):
 
         return f"✅ REGISTRAR registrada: {', '.join(respuesta_detalle)}"
 
-    return "❌ Formato incorrecto. Usa: REGISTRAR: tipo, detalle, cantidad, valor, unidad, lugar, observación"
+    # --- COMANDOS DE REPORTE ---
+    mensaje_lower = mensaje.lower()
+    if "reporte" in mensaje_lower:
+        if "diario" in mensaje_lower:
+            return generar_reporte("diario")
+        elif "quincenal" in mensaje_lower:
+            return generar_reporte("quincenal")
+        elif "mensual" in mensaje_lower:
+            return generar_reporte("mensual")
+        else:
+            return generar_reporte("semanal")
+
+    # --- FLUJO CONVERSACIONAL (si no es comando) ---
+    if remitente:
+        return iniciar_flujo_conversacional(remitente, mensaje)
+
+    return "❌ No entendí. Escribe 'ayuda' para ver cómo usar el bot."
