@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 bot.py - Sistema de Registro Conversacional para Hacienda La Tática
-Versión final con flujo interactivo + soporte para REGISTRAR: ... (mantenido)
+Versión final con flujo interactivo, valor en gasto y producción, y soporte para REGISTRAR: ...
 """
 
 import os
@@ -94,7 +94,7 @@ except Exception as e:
     print(f"❌ Error crítico al inicializar BD: {e}")
     BD_OK = False
 
-# === 2. SINÓNIMOS AMPLIADOS (para detección inteligente) ===
+# === 2. SINÓNIMOS AMPLIADOS ===
 SINONIMOS = {
     "siembra": ["sembrar", "sembramos", "siembra", "plantar", "plantamos", "pusimos semilla", "resiembra", "resembramos"],
     "cosecha": ["cosechar", "cosechamos", "cosecha", "cortar", "recolectar", "recolectamos", "descacotamos", "descacotar"],
@@ -118,10 +118,10 @@ SINONIMOS = {
     "gasto": ["gasto", "pagamos", "vendimos", "se murieron", "baja", "muertes", "perdida", "se pago", "se vendio", "vendieron", "factura", "compra", "costo"]
 }
 
-# === 3. ESTADO DEL USUARIO (diccionario en memoria) ===
+# === 3. ESTADO DEL USUARIO ===
 user_state = {}
 
-# === 4. DETECTAR ACTIVIDAD (por sinónimos) ===
+# === 4. DETECTAR ACTIVIDAD ===
 def detectar_actividad(mensaje):
     mensaje = mensaje.lower()
     for actividad, palabras in SINONIMOS.items():
@@ -190,7 +190,7 @@ def registrar_animal(datos):
 
 # === 6. GUARDAR REGISTRO GENERAL ===
 def guardar_registro(tipo_actividad, accion, detalle, lugar=None, cantidad=None, valor=0, unidad=None, observacion=None):
-    print(f"🔍 GUARDANDO REGISTRO: {tipo_actividad} | {detalle} | {lugar} | {cantidad} {unidad}")
+    print(f"🔍 GUARDANDO REGISTRO: {tipo_actividad} | {detalle} | {lugar} | {cantidad} {unidad} | valor: {valor}")
     try:
         database_url = os.environ.get("DATABASE_URL")
         if not database_url:
@@ -309,13 +309,15 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
                 lines.append(desc)
             lines.append("")
 
-        # PRODUCCIÓN
+        # PRODUCCIÓN (con valor de venta)
         if produccion:
             lines.append("🥛🥩 PRODUCCIÓN")
             for row in produccion:
                 if not row[3]: continue
                 desc = f"• {row[5]} {row[7]} de {row[3]}"
                 if row[4]: desc += f" del {row[4]}"
+                if row[6] and row[6] > 0:  # valor > 0
+                    desc += f" → Venta: ${row[6]:,.0f}"
                 if row[8]: desc += f". Obs: {row[8]}"
                 lines.append(desc)
             lines.append("")
@@ -406,9 +408,9 @@ def consultar_estado_animal(arete):
                 row = cursor.fetchone()
                 if not row:
                     return f"❌ No encontré ningún animal con arete o marca '{arete}'."
-                
+
                 especie, estado, peso, corral, fecha_reg, obs = row
-                
+
                 cursor.execute("""
                     SELECT tipo, fecha FROM salud_animal 
                     WHERE id_externo = %s ORDER BY fecha DESC LIMIT 2
@@ -421,7 +423,7 @@ def consultar_estado_animal(arete):
                         vacuna = f"{fecha}"
                     elif "despar" in tipo.lower() or "purgar" in tipo.lower():
                         despar = f"{fecha}"
-                
+
                 return (
                     f"🐷 ANIMAL {arete} ({especie})\n"
                     f"• Estado: {estado}\n"
@@ -444,7 +446,8 @@ def iniciar_flujo_conversacional(numero, mensaje):
             "data": {
                 "tipo": "",
                 "detalle": "",
-                "cantidad": "",
+                "cantidad": None,
+                "valor": 0,
                 "lugar": "",
                 "observacion": ""
             }
@@ -482,12 +485,12 @@ def iniciar_flujo_conversacional(numero, mensaje):
         elif msg in ["5", "gasto", "pagamos", "compra", "costo"]:
             state["data"]["tipo"] = "gasto"
             state["step"] = "waiting_for_detalle"
-            return "💰 ¿Qué gastaste? (Ej: concentrado, medicina, insumo)"
+            return "💰 ¿Qué gastaste? (Ej: jornales, concentrado, medicina)"
         
         elif msg in ["6", "produccion", "producción", "leche", "carne", "kg"]:
             state["data"]["tipo"] = "produccion"
             state["step"] = "waiting_for_detalle"
-            return "🥛 ¿Qué produjiste? (Ej: leche, carne, huevos)"
+            return "🥛 ¿Qué produjiste o vendiste? (Ej: leche, carne, huevos)"
         
         elif msg in ["7", "labor", "limpiar", "fumigar", "alimentar", "reparar"]:
             state["data"]["tipo"] = "labor"
@@ -495,7 +498,6 @@ def iniciar_flujo_conversacional(numero, mensaje):
             return "🛠️ ¿Qué labor hiciste? (Ej: limpieza de corral, alimentación, poda)"
         
         else:
-            # Detectar por sinónimos
             tipo_detectado = detectar_actividad(mensaje)
             if tipo_detectado in SINONIMOS:
                 state["data"]["tipo"] = tipo_detectado
@@ -532,6 +534,21 @@ def iniciar_flujo_conversacional(numero, mensaje):
             except ValueError:
                 return "❌ Por favor, escribe un número (Ej: 5, 10) o 'ninguna'"
 
+        # Si es gasto o produccion, preguntar valor
+        if state["data"]["tipo"] in ["gasto", "produccion"]:
+            state["step"] = "waiting_for_valor"
+            return "💰 ¿Cuál es el valor total? (Ej: 150000) — o escribe '0' si no aplica"
+        else:
+            state["step"] = "waiting_for_lugar"
+            return "📍 ¿Dónde fue? (Ej: corral A, lote 3, bodega)"
+    
+    # === PASO 3B: Valor (para gasto y produccion) ===
+    elif state["step"] == "waiting_for_valor":
+        try:
+            state["data"]["valor"] = float(msg)
+        except ValueError:
+            return "❌ Por favor, escribe un número (Ej: 150000)"
+        
         state["step"] = "waiting_for_lugar"
         return "📍 ¿Dónde fue? (Ej: corral A, lote 3, bodega)"
 
@@ -552,10 +569,11 @@ def iniciar_flujo_conversacional(numero, mensaje):
         tipo = state["data"]["tipo"]
         detalle = state["data"]["detalle"]
         cantidad = state["data"]["cantidad"]
+        valor = state["data"]["valor"]
         lugar = state["data"]["lugar"]
         observacion = state["data"]["observacion"]
 
-        # Para animales nuevos, usar registrar_animal()
+        # Para animales nuevos
         if tipo == "reproduccion":
             datos = extraer_datos_animal(detalle)
             if datos["especie"] and datos["marca_o_arete"]:
@@ -570,7 +588,8 @@ def iniciar_flujo_conversacional(numero, mensaje):
 
         # Para otros tipos
         else:
-            guardar_registro(tipo, tipo, detalle, lugar, cantidad, 0, "unidad", observacion)
+            unidad = "COP" if tipo == "gasto" else "unidad"
+            guardar_registro(tipo, tipo, detalle, lugar, cantidad, valor, unidad, observacion)
             del user_state[numero]
             return f"✅ ¡Registrado! {detalle} ({cantidad or 'sin cantidad'}) en {lugar or 'sin lugar'}\n\n¡Gracias por usar Hacienda La Tática!"
 
@@ -605,7 +624,8 @@ def procesar_mensaje_whatsapp(mensaje, remitente=None):
             "Ejemplos de comando:\n"
             "🔹 REGISTRAR: siembra, maíz, 5, 0, bolsas, lote 3\n"
             "🔹 REGISTRAR: sanidad, vacuna aftosa, 10, 0, dosis, corral A, marcas M1-M10\n"
-            "🔹 REGISTRAR: gasto, compra concentrado, 0, 150000, COP, bodega, factura #123\n\n"
+            "🔹 REGISTRAR: gasto, jornales, 5, 75000, COP, pago a Juan, factura #123\n"
+            "🔹 REGISTRAR: produccion, leche, 8, 160000, litros, corral B, vendida a intermediario\n\n"
             "📊 Reportes:\n"
             "reporte semanal\n"
             "reporte diario\n"
