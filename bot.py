@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 bot.py - Sistema de Registro Conversacional para Hacienda La Tática
-Versión final con flujo interactivo, valor en gasto y producción, y reportes corregidos.
+Versión final con flujo conversacional, cantidad corregida en animales, y reportes completos.
 """
 
 import os
@@ -587,18 +587,13 @@ def iniciar_flujo_conversacional(numero, mensaje):
         lugar = state["data"]["lugar"]
         observacion = state["data"]["observacion"]
 
-        # Para animales nuevos
+        # Para animales nuevos: usar la cantidad real
         if tipo == "reproduccion":
-            datos = extraer_datos_animal(detalle)
-            if datos["especie"] and datos["marca_o_arete"]:
-                respuesta = registrar_animal(datos)
-                guardar_registro(tipo, "nuevo animal", detalle, lugar, 1, 0, "unidad", observacion)
-                del user_state[numero]
-                return f"{respuesta}\n\n✅ ¡Registro guardado! Vuelve cuando necesites."
-            else:
-                guardar_registro(tipo, "nuevo animal", detalle, lugar, 1, 0, "unidad", observacion)
-                del user_state[numero]
-                return f"✅ Registrado: {detalle} en {lugar}\n\n¡Gracias por registrar!"
+            # Registrar en tabla general con la cantidad ingresada
+            guardar_registro(tipo, "nuevo animal", detalle, lugar, cantidad, 0, "unidad", observacion)
+            del user_state[numero]
+            cantidad_str = int(cantidad) if cantidad is not None else 1
+            return f"✅ Registrado: {cantidad_str} unidades de {detalle} en {lugar}\n\n¡Gracias por registrar!"
 
         # Para otros tipos
         else:
@@ -734,12 +729,17 @@ def procesar_mensaje_whatsapp(mensaje, remitente=None):
                 return "❌ Falta el arete"
             
             resultado = registrar_animal(datos)
+            # Usar la cantidad del mensaje si está disponible
+            try:
+                cantidad_msg = float(campos[2]) if len(campos) > 2 and campos[2] else 1
+            except:
+                cantidad_msg = 1
             guardar_registro(
                 "reproduccion",
                 "nuevo animal",
                 f"{datos['especie']} ({datos['categoria']})",
                 datos["corral"],
-                1,
+                cantidad_msg,
                 0,
                 "unidad",
                 f"arete: {datos['marca_o_arete']}"
