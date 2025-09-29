@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 bot.py - Sistema de Registro Conversacional para Hacienda La Tática
-Versión final con flujo interactivo, valor en gasto y producción, y soporte para REGISTRAR: ...
+Versión final con flujo interactivo, valor en gasto y producción, y reportes corregidos.
 """
 
 import os
@@ -290,8 +290,9 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
             for row in labores:
                 desc = f"• {row[3] or 'actividad'}"
                 if row[4]: desc += f" en {row[4]}"
-                if row[5] and "jornal" in (row[3] or row[8] or ''): 
-                    desc += f" ({row[5]} jornales)"
+                if row[5]:
+                    unidad = row[7] or "unidad"
+                    desc += f" ({row[5]} {unidad})"
                 if any(x in (row[3] or '').lower() for x in ['comida', 'alimento', 'alimentar']):
                     desc = f"🍽️ {desc}"
                 if row[8]: desc += f". Obs: {row[8]}"
@@ -304,7 +305,9 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
             for row in sanidad:
                 desc = f"• {row[3] or 'tratamiento'}"
                 if row[4]: desc += f" en {row[4]}"
-                if row[5]: desc += f" ({row[5]} {row[7]})"
+                if row[5]:
+                    unidad = row[7] or "dosis"
+                    desc += f" ({row[5]} {unidad})"
                 if row[8]: desc += f". Obs: {row[8]}"
                 lines.append(desc)
             lines.append("")
@@ -337,9 +340,18 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
             lines.append("💰 GASTOS")
             total = sum(r[6] for r in gastos if r[6] > 0)
             for row in gastos:
+                cantidad = row[5] if row[5] is not None else ""
+                unidad = row[7] or ""
                 valor = row[6] if row[6] > 0 else 0
-                desc = f"• Gasto: {row[8] or 'sin detalle'}"
-                if valor > 0: desc += f" (${valor:,.0f})"
+                desc = f"• {row[3] or 'Gasto'}"
+                if cantidad and unidad:
+                    desc += f" ({cantidad} {unidad})"
+                elif cantidad:
+                    desc += f" ({cantidad})"
+                if valor > 0:
+                    desc += f" → ${valor:,.0f}"
+                if row[8]:
+                    desc += f". Obs: {row[8]}"
                 lines.append(desc)
             if total > 0:
                 lines.append(f"  → Total: ${total:,.0f}")
@@ -363,7 +375,9 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
         if nuevos:
             lines.append("🆕 ANIMALES NUEVOS")
             for row in nuevos:
-                desc = f"• {row[3]}"
+                cantidad = row[5] if row[5] is not None else 1
+                unidad = row[7] or "unidad"
+                desc = f"• {cantidad} {unidad} de {row[3]}"
                 if row[4]: desc += f" en {row[4]}"
                 if row[8]: desc += f". Obs: {row[8]}"
                 lines.append(desc)
@@ -502,11 +516,10 @@ def iniciar_flujo_conversacional(numero, mensaje):
             if tipo_detectado in SINONIMOS:
                 state["data"]["tipo"] = tipo_detectado
                 state["step"] = "waiting_for_detalle"
-                return f"✅ Entendí: {tipo_detectado}. ¿Qué detalle quieres registrar? (Ej: siembra, vacuna, limpieza)"
+                return f"✅ Entendí: {tipo_detectado}. ¿Qué detalle quieres registrar? (Ej: maíz, vacuna aftosa, limpieza)"
 
             return (
-                "🌿 ¡Hola! Bienvenido al bot de control de Actividades Agropecuarias Hacienda La Tática.\n\n"
-                "Diseñado y elaborado por Omar Alberto Pachon, Cel: 3143539351\n\n"
+                "🌿 ¡Hola! Bienvenido a Hacienda La Tática.\n\n"
                 "¿Qué actividad vamos a registrar hoy?\n\n"
                 "1. 🌱 Siembra\n"
                 "2. 🌽 Cosecha\n"
