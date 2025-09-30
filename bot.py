@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 bot.py - Sistema de Registro Conversacional para Hacienda La Tática
-Versión final con flujo conversacional, cantidad corregida en animales, y reportes completos.
+Versión final con flujo conversacional corregido, cantidad real y reportes completos.
 """
 
 import os
@@ -476,6 +476,21 @@ def iniciar_flujo_conversacional(numero, mensaje):
             del user_state[numero]
             return "✅ ¡Gracias por usar Hacienda La Tática! Vuelve cuando necesites."
 
+        # Si el usuario reenvía una opción del menú, reiniciamos el flujo
+        if msg in ["1", "2", "3", "4", "5", "6", "7"]:
+            user_state[numero] = {
+                "step": "waiting_for_category",
+                "data": {
+                    "tipo": "",
+                    "detalle": "",
+                    "cantidad": None,
+                    "valor": 0,
+                    "lugar": "",
+                    "observacion": ""
+                }
+            }
+            state = user_state[numero]
+
         if msg in ["1", "siembra", "siembra", "sembrar"]:
             state["data"]["tipo"] = "siembra"
             state["step"] = "waiting_for_detalle"
@@ -589,7 +604,6 @@ def iniciar_flujo_conversacional(numero, mensaje):
 
         # Para animales nuevos: usar la cantidad real
         if tipo == "reproduccion":
-            # Registrar en tabla general con la cantidad ingresada
             guardar_registro(tipo, "nuevo animal", detalle, lugar, cantidad, 0, "unidad", observacion)
             del user_state[numero]
             cantidad_str = int(cantidad) if cantidad is not None else 1
@@ -729,7 +743,6 @@ def procesar_mensaje_whatsapp(mensaje, remitente=None):
                 return "❌ Falta el arete"
             
             resultado = registrar_animal(datos)
-            # Usar la cantidad del mensaje si está disponible
             try:
                 cantidad_msg = float(campos[2]) if len(campos) > 2 and campos[2] else 1
             except:
