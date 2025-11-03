@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 bot.py - Sistema de Registro Conversacional para Hacienda La Tática
-Versión FINAL: gestión completa + migración automática de 'jornales'.
+Versión FINAL: gestión de animales + jornales con valor + reporte mejorado.
 """
 
 import os
@@ -23,7 +23,6 @@ def inicializar_bd():
         conn = psycopg2.connect(database_url)
         cursor = conn.cursor()
 
-        # Tabla: animales
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS animales (
                 id SERIAL PRIMARY KEY,
@@ -39,7 +38,6 @@ def inicializar_bd():
             )
         ''')
 
-        # Tabla: registros (con 'unidad' ya existente y 'jornales' nueva)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS registros (
                 id SERIAL PRIMARY KEY,
@@ -57,7 +55,6 @@ def inicializar_bd():
             )
         ''')
 
-        # Tabla: salud_animal
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS salud_animal (
                 id SERIAL PRIMARY KEY,
@@ -210,29 +207,9 @@ def registrar_animal(datos):
         print(f"❌ Error al registrar animal: {e}")
         return "Hubo un error al registrar el animal."
 
-# === 7. ACTUALIZAR ESTADO DE ANIMAL ===
-def actualizar_estado_animal(id_externo, nuevo_estado, observacion=""):
-    try:
-        database_url = os.environ.get("DATABASE_URL")
-        if not database_url: return False
-
-        with psycopg2.connect(database_url) as conn:
-            with conn.cursor() as cursor:
-                obs = observacion or ""
-                cursor.execute('''
-                    UPDATE animales 
-                    SET estado = %s, observaciones = COALESCE(observaciones, '') || %s
-                    WHERE id_externo = %s OR marca_o_arete = %s
-                ''', (nuevo_estado, f" | {obs}", id_externo, id_externo))
-            conn.commit()
-        return True
-    except Exception as e:
-        print(f"❌ Error al actualizar estado: {e}")
-        return False
-
 # === 8. GUARDAR REGISTRO GENERAL ===
 def guardar_registro(tipo_actividad, accion, detalle, lugar=None, cantidad=None, valor=0, unidad=None, observacion=None, jornales=None):
-    print(f"🔍 GUARDANDO REGISTRO: {tipo_actividad} | {detalle} | lugar: {lugar} | cantidad: {cantidad} {unidad} | jornales: {jornales}")
+    print(f"🔍 GUARDANDO REGISTRO: {tipo_actividad} | {detalle} | lugar: {lugar} | cantidad: {cantidad} {unidad} | jornales: {jornales} | valor: {valor}")
     try:
         database_url = os.environ.get("DATABASE_URL")
         if not database_url:
@@ -283,7 +260,7 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT fecha, tipo_actividad, accion, detalle, lugar, cantidad, valor, unidad, observacion
+                    SELECT fecha, tipo_actividad, accion, detalle, lugar, cantidad, valor, unidad, observacion, jornales
                     FROM registros WHERE fecha >= %s ORDER BY fecha, tipo_actividad
                 """, (inicio.isoformat(),))
                 registros = cursor.fetchall()
@@ -301,8 +278,6 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
         ingresos = [r for r in registros if r[1] == "ingreso_animal"]
         salidas = [r for r in registros if r[1] == "salida_animal"]
         gastos = [r for r in registros if r[1] == "gasto"]
-        jornales = [r for r in registros if "jornal" in (r[2] or r[8] or '')]
-        gastos_jornales = [r for r in gastos if "jornal" in (r[8] or '').lower()]
 
         # SIEMBRAS
         if siembras:
@@ -311,6 +286,11 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
                 desc = f"• {row[3] or 'producto'}"
                 if row[4]: desc += f" en {row[4]}"
                 if row[5] and row[7]: desc += f" ({row[5]} {row[7]})"
+                if row[9] or row[6]:  # jornales o valor
+                    extras = []
+                    if row[9]: extras.append(f"{row[9]} jornales")
+                    if row[6] > 0: extras.append(f"${row[6]:,.0f}")
+                    if extras: desc += " → " + ", ".join(extras)
                 if row[8]: desc += f". Obs: {row[8]}"
                 lines.append(desc)
             lines.append("")
@@ -332,7 +312,11 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
                 for row in vegetal:
                     desc = f"• {row[5]} {row[7]} de {row[3]}"
                     if row[4]: desc += f" del {row[4]}"
-                    if row[6] and row[6] > 0: desc += f" → Venta: ${row[6]:,.0f}"
+                    if row[6] > 0: desc += f" → Venta: ${row[6]:,.0f}"
+                    if row[9] or (row[6] <= 0 and row[9]):
+                        extras = []
+                        if row[9]: extras.append(f"{row[9]} jornales")
+                        if extras: desc += " → " + ", ".join(extras)
                     if row[8]: desc += f". Obs: {row[8]}"
                     lines.append(desc)
                 lines.append("")
@@ -343,7 +327,11 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
                     if not row[3]: continue
                     desc = f"• {row[5]} {row[7]} de {row[3]}"
                     if row[4]: desc += f" del {row[4]}"
-                    if row[6] and row[6] > 0: desc += f" → Venta: ${row[6]:,.0f}"
+                    if row[6] > 0: desc += f" → Venta: ${row[6]:,.0f}"
+                    if row[9] or (row[6] <= 0 and row[9]):
+                        extras = []
+                        if row[9]: extras.append(f"{row[9]} jornales")
+                        if extras: desc += " → " + ", ".join(extras)
                     if row[8]: desc += f". Obs: {row[8]}"
                     lines.append(desc)
                 lines.append("")
@@ -361,7 +349,7 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
 
         # SALIDA DE ANIMALES
         if salidas:
-            lines.append("⚰️ SALIDA DE ANIMALES")
+            lines.append("🐄 SALIDA DE ANIMALES")
             for row in salidas:
                 motivo = "Venta" if "venta" in (row[8] or '').lower() or row[6] > 0 else "Muerte"
                 desc = f"• {row[5] or 1} {row[7] or 'unidad'} de {row[3]} ({motivo})"
@@ -382,6 +370,11 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
                     desc += f" ({row[5]} {unidad})"
                 if any(x in (row[3] or '').lower() for x in ['comida', 'alimento', 'alimentar']):
                     desc = f"🍽️ {desc}"
+                if row[9] or row[6]:
+                    extras = []
+                    if row[9]: extras.append(f"{row[9]} jornales")
+                    if row[6] > 0: extras.append(f"${row[6]:,.0f}")
+                    if extras: desc += " → " + ", ".join(extras)
                 if row[8]: desc += f". Obs: {row[8]}"
                 lines.append(desc)
             lines.append("")
@@ -395,6 +388,11 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
                 if row[5]:
                     unidad = row[7] or "dosis"
                     desc += f" ({row[5]} {unidad})"
+                if row[9] or row[6]:
+                    extras = []
+                    if row[9]: extras.append(f"{row[9]} jornales")
+                    if row[6] > 0: extras.append(f"${row[6]:,.0f}")
+                    if extras: desc += " → " + ", ".join(extras)
                 if row[8]: desc += f". Obs: {row[8]}"
                 lines.append(desc)
             lines.append("")
@@ -421,18 +419,26 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
                 lines.append(f"  → Total: ${total:,.0f}")
             lines.append("")
 
-        # JORNALES
-        total_jornales = sum(r[5] for r in jornales if r[5])
-        total_gastado = sum(r[6] for r in gastos_jornales if r[6] > 0)
-
-        if jornales or gastos_jornales:
-            lines.append("👷 JORNALES")
-            if total_jornales > 0:
-                lines.append(f"• Cantidad: {int(total_jornales)} jornales")
-            if total_gastado > 0:
-                lines.append(f"• Costo total: ${total_gastado:,.0f}")
-            else:
-                lines.append(f"• Costo estimado: ${int(total_jornales * 15000):,.0f}")
+        # === SECCIÓN ESPECIAL: COSTO DE JORNALES POR ACTIVIDAD ===
+        actividades_con_jornales = [r for r in registros if r[9] and r[9] > 0]
+        if actividades_con_jornales:
+            lines.append("💵 COSTO DE JORNALES POR ACTIVIDAD")
+            total_jornales_general = 0
+            total_valor_jornales = 0
+            for row in actividades_con_jornales:
+                tipo = row[1].replace("_", " ").title()
+                jornales = row[9]
+                valor = row[6] if row[6] > 0 else 0
+                total_jornales_general += jornales
+                total_valor_jornales += valor
+                desc = f"• {tipo}: {jornales} jornales"
+                if valor > 0:
+                    desc += f" → ${valor:,.0f}"
+                lines.append(desc)
+            if total_jornales_general > 0:
+                lines.append(f"→ Total jornales: {total_jornales_general}")
+            if total_valor_jornales > 0:
+                lines.append(f"→ Total valor: ${total_valor_jornales:,.0f}")
             lines.append("")
 
         lines.append("✅ Todo bajo control. ¡Buen trabajo!")
@@ -555,7 +561,7 @@ def iniciar_flujo_conversacional(numero, mensaje):
         elif msg in ["5", "salida", "venta", "muerte"]:
             state["data"]["tipo"] = "salida_animal"
             state["step"] = "waiting_for_subtipo"
-            return "⚰️ ¿Es por venta o muerte de animales?"
+            return "🐄 ¿Es por venta o muerte de animales?"
 
         elif msg in ["6", "gasto", "pagamos", "compra"]:
             state["data"]["tipo"] = "gasto"
@@ -585,7 +591,7 @@ def iniciar_flujo_conversacional(numero, mensaje):
                 "2. 🌾 Producción (cosecha, leche, carne)\n"
                 "3. 💉 Sanidad animal\n"
                 "4. 🐷 Ingreso de animales (nacimientos, compras)\n"
-                "5. ⚰️ Salida de animales (ventas, muertes)\n"
+                "5. 🐄 Salida de animales (ventas, muertes)\n"
                 "6. 💰 Gasto\n"
                 "7. 🛠️ Labor\n\n"
                 "Escribe 'fin' o '0' para salir."
@@ -609,11 +615,11 @@ def iniciar_flujo_conversacional(numero, mensaje):
             if "venta" in msg or "vendimos" in msg:
                 state["data"]["subtipo"] = "venta"
                 state["step"] = "waiting_for_detalle"
-                return "🐖 ¿Qué animal vendiste? (Ej: cerdos, terneros)"
+                return "🐄 ¿Qué animal vendiste? (Ej: cerdos, terneros)"
             elif "muerte" in msg or "murieron" in msg:
                 state["data"]["subtipo"] = "muerte"
                 state["step"] = "waiting_for_detalle"
-                return "🐖 ¿Qué animal murió? (Ej: ternero, cerda)"
+                return "🐄 ¿Qué animal murió? (Ej: ternero, cerda)"
             else:
                 return "❓ Por favor, especifica: ¿venta o muerte?"
 
@@ -636,24 +642,15 @@ def iniciar_flujo_conversacional(numero, mensaje):
     elif state["step"] == "waiting_for_unidad":
         state["data"]["unidad"] = mensaje
         tipo = state["data"]["tipo"]
-        if tipo in ["gasto", "produccion", "salida_animal"]:
+
+        actividades_con_jornales = ["siembra", "produccion", "labor", "sanidad_animal"]
+        
+        if tipo in actividades_con_jornales:
+            state["step"] = "waiting_for_jornales"
+            return "👷 ¿Cuántos jornales se usaron? (Ej: 2) — o '0' si no aplica"
+        elif tipo in ["ingreso_animal", "salida_animal", "gasto"]:
             state["step"] = "waiting_for_valor"
             return "💰 ¿Valor en COP? (Ej: 500000) — o '0' si no aplica"
-        elif tipo in ["siembra", "labor", "ingreso_animal", "produccion"]:
-            state["step"] = "waiting_for_jornales"
-            return "👷 ¿Jornales usados? (Ej: 2) — o '0'"
-        else:
-            state["step"] = "waiting_for_lugar"
-            return "📍 ¿Dónde fue? (Ej: corral A, lote 3)"
-
-    elif state["step"] == "waiting_for_valor":
-        try:
-            state["data"]["valor"] = float(msg)
-        except ValueError:
-            return "❌ Por favor, escribe un número (Ej: 500000)"
-        if state["data"]["tipo"] in ["siembra", "labor", "ingreso_animal", "produccion"]:
-            state["step"] = "waiting_for_jornales"
-            return "👷 ¿Jornales usados? (Ej: 2) — o '0'"
         else:
             state["step"] = "waiting_for_lugar"
             return "📍 ¿Dónde fue? (Ej: corral A, lote 3)"
@@ -663,8 +660,16 @@ def iniciar_flujo_conversacional(numero, mensaje):
             state["data"]["jornales"] = int(float(msg))
         except ValueError:
             return "❌ Por favor, escribe un número entero (Ej: 2) o '0'"
+        state["step"] = "waiting_for_valor"
+        return "💰 ¿Valor total de los jornales en COP? (Ej: 60000) — o '0' si no aplica"
+
+    elif state["step"] == "waiting_for_valor":
+        try:
+            state["data"]["valor"] = float(msg)
+        except ValueError:
+            return "❌ Por favor, escribe un número (Ej: 60000)"
         state["step"] = "waiting_for_lugar"
-        return "📍 ¿Dónde fue? (Ej: corral A, lote 3)"
+        return "📍 ¿Dónde fue? (Ej: lote 3, corral A)"
 
     elif state["step"] == "waiting_for_lugar":
         state["data"]["lugar"] = mensaje
@@ -694,7 +699,6 @@ def iniciar_flujo_conversacional(numero, mensaje):
             guardar_registro(tipo, subtipo, detalle, lugar, cantidad, valor, unidad, observacion, jornales)
 
         elif tipo == "salida_animal":
-            estado = "vendido" if subtipo == "venta" else "muerto"
             guardar_registro(tipo, subtipo, detalle, lugar, cantidad, valor, unidad, observacion, jornales)
 
         else:
