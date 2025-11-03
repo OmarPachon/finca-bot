@@ -523,7 +523,7 @@ def iniciar_flujo_conversacional(numero, mensaje):
     state = user_state[numero]
     msg = mensaje.strip().lower()
 
-    if msg in ["fin", "salir", "cancelar", "no", "nada", "0"]:
+    if msg in ["fin", "salir", "cancelar", "no", "nada"]:
         del user_state[numero]
         return "✅ ¡Gracias por usar Hacienda La Tática! Vuelve cuando necesites."
 
