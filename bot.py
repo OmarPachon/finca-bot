@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 bot.py - Sistema de Registro Conversacional para Hacienda La Tática
-Versión FINAL: gestión de animales + jornales con valor + reporte mejorado.
+Versión FINAL: flujo completo + soporte para exportar reportes.
 """
 
 import os
@@ -207,7 +207,7 @@ def registrar_animal(datos):
         print(f"❌ Error al registrar animal: {e}")
         return "Hubo un error al registrar el animal."
 
-# === 8. GUARDAR REGISTRO GENERAL ===
+# === 7. GUARDAR REGISTRO GENERAL ===
 def guardar_registro(tipo_actividad, accion, detalle, lugar=None, cantidad=None, valor=0, unidad=None, observacion=None, jornales=None):
     print(f"🔍 GUARDANDO REGISTRO: {tipo_actividad} | {detalle} | lugar: {lugar} | cantidad: {cantidad} {unidad} | jornales: {jornales} | valor: {valor}")
     try:
@@ -230,7 +230,7 @@ def guardar_registro(tipo_actividad, accion, detalle, lugar=None, cantidad=None,
         import traceback
         print(traceback.format_exc())
 
-# === 9. GENERAR REPORTE DETALLADO ===
+# === 8. GENERAR REPORTE EN TEXTO ===
 def generar_reporte(frecuencia="semanal", formato="texto"):
     hoy = datetime.date.today()
 
@@ -286,7 +286,7 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
                 desc = f"• {row[3] or 'producto'}"
                 if row[4]: desc += f" en {row[4]}"
                 if row[5] and row[7]: desc += f" ({row[5]} {row[7]})"
-                if row[9] or row[6]:  # jornales o valor
+                if row[9] or row[6]:
                     extras = []
                     if row[9]: extras.append(f"{row[9]} jornales")
                     if row[6] > 0: extras.append(f"${row[6]:,.0f}")
@@ -419,7 +419,7 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
                 lines.append(f"  → Total: ${total:,.0f}")
             lines.append("")
 
-        # === SECCIÓN ESPECIAL: COSTO DE JORNALES POR ACTIVIDAD ===
+        # SECCIÓN DE JORNALES
         actividades_con_jornales = [r for r in registros if r[9] and r[9] > 0]
         if actividades_con_jornales:
             lines.append("💵 COSTO DE JORNALES POR ACTIVIDAD")
@@ -446,7 +446,7 @@ def generar_reporte(frecuencia="semanal", formato="texto"):
 
     return registros
 
-# === 10. COMANDO SECRETO ===
+# === 9. COMANDO SECRETO ===
 def vaciar_tablas():
     try:
         database_url = os.environ.get("DATABASE_URL")
@@ -467,7 +467,7 @@ def vaciar_tablas():
         print(f"❌ Error al limpiar BD: {e}")
         return "❌ No se pudo limpiar la base de datos."
 
-# === 11. CONSULTAR ESTADO ANIMAL ===
+# === 10. CONSULTAR ESTADO ANIMAL ===
 def consultar_estado_animal(arete):
     try:
         database_url = os.environ.get("DATABASE_URL")
@@ -509,7 +509,7 @@ def consultar_estado_animal(arete):
     except Exception as e:
         return "❌ Error al consultar el animal. Inténtalo más tarde."
 
-# === 12. FLUJO CONVERSACIONAL ===
+# === 11. FLUJO CONVERSACIONAL ===
 def iniciar_flujo_conversacional(numero, mensaje):
     if numero not in user_state:
         user_state[numero] = {
@@ -709,7 +709,7 @@ def iniciar_flujo_conversacional(numero, mensaje):
 
     return "❌ Error interno. Intenta de nuevo."
 
-# === 13. PROCESAR MENSAJE WHASTAPP ===
+# === 12. PROCESAR MENSAJE WHASTAPP ===
 def procesar_mensaje_whatsapp(mensaje, remitente=None):
     print(f"🔍 [BOT] Procesando mensaje: '{mensaje}'")
     mensaje = mensaje.strip()
@@ -726,12 +726,27 @@ def procesar_mensaje_whatsapp(mensaje, remitente=None):
         arete = mensaje.split(" ", 2)[2].strip().upper()
         return consultar_estado_animal(arete)
 
+    if mensaje.lower().startswith("exportar reporte"):
+        # Obtener URL base
+        app_url = os.environ.get("APP_URL", "https://finca-bot.onrender.com")
+        if "diario" in mensaje.lower():
+            tipo = "diario"
+        elif "mensual" in mensaje.lower():
+            tipo = "mensual"
+        elif "quincenal" in mensaje.lower():
+            tipo = "quincenal"
+        else:
+            tipo = "semanal"
+        enlace = f"{app_url}/reporte?tipo={tipo}&formato=excel"
+        return f"📊 Tu reporte está listo:\n{enlace}\n\n✅ Ábrelo en tu navegador para descargar el Excel."
+
     if mensaje.strip().lower() in ["ayuda", "help"]:
         return (
             "🌿 Bienvenido a Hacienda La Tática.\n\n"
-            "Usa el menú o escribe libremente.\n"
-            "Ej: 'vendimos 3 cerdos', 'nacieron 5 lechones'\n\n"
+            "Escribe libremente o usa el menú.\n"
+            "Ej: 'vacunamos 25 cerdos', 'nacieron 5 lechones'\n\n"
             "📊 Reportes: 'reporte semanal'\n"
+            "📤 Exportar: 'exportar reporte semanal'\n"
             "🔍 Estado: 'estado animal C-101'\n"
             "🚪 Salir: 'fin' o '0'"
         )
