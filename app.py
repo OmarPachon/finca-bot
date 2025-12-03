@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-app.py - Webhook para WhatsApp + Twilio + Ruta de exportación a Excel
+app.py - Webhook para WhatsApp + Twilio + Ruta temporal para reiniciar BD
 """
 
 import os
@@ -64,13 +64,51 @@ def webhook():
     print("📤 [WEBHOOK] Enviando respuesta a Twilio")
     return str(r)
 
-# === RUTA DE REPORTE (DESACTIVADA POR SEGURIDAD EN MULTI-FINCA) ===
+# === RUTA TEMPORAL: REINICIAR BASE DE DATOS (solo para Render Free) ===
+@app.route("/reiniciar-bd")
+def reiniciar_bd():
+    try:
+        database_url = os.environ.get("DATABASE_URL")
+        if not database_url:
+            return "❌ DATABASE_URL no configurada en Render.", 500
+
+        import psycopg2
+        with psycopg2.connect(database_url) as conn:
+            with conn.cursor() as cur:
+                # Eliminar todas las tablas en orden inverso (CASCADE maneja dependencias)
+                cur.execute("""
+                    DROP TABLE IF EXISTS 
+                        registros, 
+                        salud_animal, 
+                        animales, 
+                        usuarios, 
+                        fincas 
+                    CASCADE;
+                """)
+                conn.commit()
+        
+        # Reutilizar tu función de inicialización
+        if bot and hasattr(bot, 'inicializar_bd'):
+            if bot.inicializar_bd():
+                return "✅ Base de datos reiniciada completamente.\n¡Ahora puedes registrar tu finca desde WhatsApp!", 200
+            else:
+                return "❌ Falló la inicialización automática de las tablas.", 500
+        else:
+            return "⚠️ El módulo 'bot' no está disponible para reinicializar.", 500
+
+    except Exception as e:
+        import traceback
+        error_msg = f"❌ Error al reiniciar BD:\n{type(e).__name__}: {e}\n\n{traceback.format_exc()}"
+        print(error_msg)
+        return error_msg, 500
+
+# === RUTA DE REPORTE (DESACTIVADA POR SEGURIDAD) ===
 @app.route("/reporte")
 def descargar_reporte():
     return "🔒 Acceso restringido. Usa 'exportar reporte' desde WhatsApp.", 403
 
 # === INICIO DEL SERVIDOR ===
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
+    port = int(oselsius.environ.get("PORT", 10000))
     print(f"🌍 Servidor iniciando en http://0.0.0.0:{port}")
     app.run(host="0.0.0.0", port=port)
