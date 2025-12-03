@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 bot.py - Sistema de Registro Conversacional Multi-Finca
-Versión FINAL COMERCIAL con todas las mejoras solicitadas por Omar
+Versión FINAL COMERCIAL con reporte financiero optimizado
 """
 
 import os
@@ -10,7 +10,7 @@ import re
 import datetime
 from urllib.parse import urlparse
 
-print("🔧 Iniciando bot.py (versión comercial final)...")
+print("🔧 Iniciando bot.py (versión comercial con reporte mejorado)...")
 
 # === 1. CONEXIÓN A POSTGRESQL CON MIGRACIÓN AUTOMÁTICA ===
 def inicializar_bd():
@@ -346,29 +346,40 @@ def generar_reporte(frecuencia="semanal", formato="texto", finca_id=None):
     if formato == "texto":
         lines = [f"📅 REPORTE {frecuencia.upper()}", periodo, ""]
 
-        siembras = [r for r in registros if r[1] == "siembra"]
-        produccion_total = [r for r in registros if r[1] == "produccion"]
-        labores = [r for r in registros if r[1] == "labor"]
-        sanidad = [r for r in registros if r[1] == "sanidad_animal"]
-        ingresos = [r for r in registros if r[1] == "ingreso_animal"]
-        salidas = [r for r in registros if r[1] == "salida_animal"]
-        gastos = [r for r in registros if r[1] == "gasto"]
+        # === CÁLCULO DE TOTALES ===
+        total_ingresos = 0
+        total_gastos = 0
+        total_jornales_valor = 0
 
-        # SIEMBRAS
-        if siembras:
-            lines.append("🌱 SIEMBRAS")
-            for row in siembras:
-                desc = f"• {row[3] or 'producto'}"
-                if row[4]: desc += f" en {row[4]}"
-                if row[5] and row[7]: desc += f" ({row[5]} {row[7]})"
-                if row[9] or row[6]:
-                    extras = []
-                    if row[9]: extras.append(f"{row[9]} jornales")
-                    if row[6] > 0: extras.append(f"${row[6]:,.0f}")
-                    if extras: desc += " → " + ", ".join(extras)
-                if row[8]: desc += f". Obs: {row[8]}"
-                lines.append(desc)
-            lines.append("")
+        produccion_total = [r for r in registros if r[1] == "produccion"]
+        gastos = [r for r in registros if r[1] == "gasto"]
+        actividades_con_jornales = [r for r in registros if r[9] and r[9] > 0]
+
+        # Ingresos por producción vendida
+        for row in produccion_total:
+            if row[6] > 0:  # valor > 0 indica venta
+                total_ingresos += row[6]
+
+        # Gastos directos
+        for row in gastos:
+            if row[6] > 0:
+                total_gastos += row[6]
+
+        # Jornales (ya sea en producción, siembra, etc.)
+        for row in actividades_con_jornales:
+            if row[6] > 0:
+                total_jornales_valor += row[6]
+
+        # === RESUMEN EJECUTIVO ===
+        lines.append("📊 RESUMEN FINANCIERO")
+        lines.append(f"• Ingresos: ${total_ingresos:,.0f}")
+        lines.append(f"• Gastos: ${total_gastos:,.0f}")
+        lines.append(f"• Jornales: ${total_jornales_valor:,.0f}")
+        balance = total_ingresos - total_gastos - total_jornales_valor
+        lines.append(f"• Balance estimado: ${balance:,.0f}")
+        lines.append("")
+
+        # === DETALLE POR SECCIONES ===
 
         # PRODUCCIÓN
         if produccion_total:
@@ -388,10 +399,6 @@ def generar_reporte(frecuencia="semanal", formato="texto", finca_id=None):
                     desc = f"• {row[5]} {row[7]} de {row[3]}"
                     if row[4]: desc += f" del {row[4]}"
                     if row[6] > 0: desc += f" → Venta: ${row[6]:,.0f}"
-                    if row[9] or (row[6] <= 0 and row[9]):
-                        extras = []
-                        if row[9]: extras.append(f"{row[9]} jornales")
-                        if extras: desc += " → " + ", ".join(extras)
                     if row[8]: desc += f". Obs: {row[8]}"
                     lines.append(desc)
                 lines.append("")
@@ -403,79 +410,13 @@ def generar_reporte(frecuencia="semanal", formato="texto", finca_id=None):
                     desc = f"• {row[5]} {row[7]} de {row[3]}"
                     if row[4]: desc += f" del {row[4]}"
                     if row[6] > 0: desc += f" → Venta: ${row[6]:,.0f}"
-                    if row[9] or (row[6] <= 0 and row[9]):
-                        extras = []
-                        if row[9]: extras.append(f"{row[9]} jornales")
-                        if extras: desc += " → " + ", ".join(extras)
                     if row[8]: desc += f". Obs: {row[8]}"
                     lines.append(desc)
                 lines.append("")
 
-        # INGRESO DE ANIMALES
-        if ingresos:
-            lines.append("🐷 INGRESO DE ANIMALES")
-            for row in ingresos:
-                desc = f"• {row[5] or 1} {row[7] or 'unidad'} de {row[3]}"
-                if row[4]: desc += f" en {row[4]}"
-                if row[6] > 0: desc += f" → Costo: ${row[6]:,.0f}"
-                if row[8]: desc += f". Obs: {row[8]}"
-                lines.append(desc)
-            lines.append("")
-
-        # SALIDA DE ANIMALES
-        if salidas:
-            lines.append("🐄 SALIDA DE ANIMALES")
-            for row in salidas:
-                motivo = "Venta" if "venta" in (row[8] or '').lower() or row[6] > 0 else "Muerte"
-                desc = f"• {row[5] or 1} {row[7] or 'unidad'} de {row[3]} ({motivo})"
-                if row[4]: desc += f" del {row[4]}"
-                if row[6] > 0: desc += f" → Ingreso: ${row[6]:,.0f}"
-                if row[8]: desc += f". Obs: {row[8]}"
-                lines.append(desc)
-            lines.append("")
-
-        # LABORES
-        if labores:
-            lines.append("🛠️ LABORES")
-            for row in labores:
-                desc = f"• {row[3] or 'actividad'}"
-                if row[4]: desc += f" en {row[4]}"
-                if row[5]:
-                    unidad = row[7] or "unidad"
-                    desc += f" ({row[5]} {unidad})"
-                if any(x in (row[3] or '').lower() for x in ['comida', 'alimento', 'alimentar']):
-                    desc = f"🍽️ {desc}"
-                if row[9] or row[6]:
-                    extras = []
-                    if row[9]: extras.append(f"{row[9]} jornales")
-                    if row[6] > 0: extras.append(f"${row[6]:,.0f}")
-                    if extras: desc += " → " + ", ".join(extras)
-                if row[8]: desc += f". Obs: {row[8]}"
-                lines.append(desc)
-            lines.append("")
-
-        # SANIDAD ANIMAL
-        if sanidad:
-            lines.append("💉 SANIDAD ANIMAL")
-            for row in sanidad:
-                desc = f"• {row[3] or 'tratamiento'}"
-                if row[4]: desc += f" en {row[4]}"
-                if row[5]:
-                    unidad = row[7] or "dosis"
-                    desc += f" ({row[5]} {unidad})"
-                if row[9] or row[6]:
-                    extras = []
-                    if row[9]: extras.append(f"{row[9]} jornales")
-                    if row[6] > 0: extras.append(f"${row[6]:,.0f}")
-                    if extras: desc += " → " + ", ".join(extras)
-                if row[8]: desc += f". Obs: {row[8]}"
-                lines.append(desc)
-            lines.append("")
-
         # GASTOS
         if gastos:
             lines.append("💰 GASTOS")
-            total = sum(r[6] for r in gastos if r[6] > 0)
             for row in gastos:
                 cantidad = row[5] if row[5] is not None else ""
                 unidad = row[7] or ""
@@ -490,30 +431,31 @@ def generar_reporte(frecuencia="semanal", formato="texto", finca_id=None):
                 if row[8]:
                     desc += f". Obs: {row[8]}"
                 lines.append(desc)
-            if total > 0:
-                lines.append(f"  → Total: ${total:,.0f}")
+            if total_gastos > 0:
+                lines.append(f"→ **TOTAL GASTOS: ${total_gastos:,.0f}**")
             lines.append("")
 
-        # SECCIÓN DE JORNALES
-        actividades_con_jornales = [r for r in registros if r[9] and r[9] > 0]
-        if actividades_con_jornales:
-            lines.append("💵 COSTO DE JORNALES POR ACTIVIDAD")
-            total_jornales_general = 0
-            total_valor_jornales = 0
-            for row in actividades_con_jornales:
+        # JORNALES (solo si hay valor asociado)
+        if total_jornales_valor > 0:
+            lines.append("👷 COSTO TOTAL DE JORNALES")
+            lines.append(f"→ **${total_jornales_valor:,.0f}**")
+            lines.append("")
+
+        # OTRAS ACTIVIDADES (siembra, labor, sanidad, etc.)
+        otras_actividades = [r for r in registros if r[1] not in ["produccion", "gasto"]]
+        if otras_actividades:
+            lines.append("📝 OTRAS ACTIVIDADES")
+            for row in otras_actividades:
                 tipo = row[1].replace("_", " ").title()
-                jornales = row[9]
-                valor = row[6] if row[6] > 0 else 0
-                total_jornales_general += jornales
-                total_valor_jornales += valor
-                desc = f"• {tipo}: {jornales} jornales"
-                if valor > 0:
-                    desc += f" → ${valor:,.0f}"
+                desc = f"• {tipo}: {row[3] or 'actividad'}"
+                if row[4]: desc += f" en {row[4]}"
+                if row[5] and row[7]:
+                    desc += f" ({row[5]} {row[7]})"
+                if row[9]:
+                    desc += f" ({row[9]} jornales)"
+                if row[8]:
+                    desc += f". Obs: {row[8]}"
                 lines.append(desc)
-            if total_jornales_general > 0:
-                lines.append(f"→ Total jornales: {total_jornales_general}")
-            if total_valor_jornales > 0:
-                lines.append(f"→ Total valor: ${total_valor_jornales:,.0f}")
             lines.append("")
 
         lines.append("✅ Todo bajo control. ¡Buen trabajo!")
