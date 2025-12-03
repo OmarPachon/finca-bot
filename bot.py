@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 bot.py - Sistema de Registro Conversacional Multi-Finca
-Versión FINAL: menús obligatorios + multi-finca + empleados + lógica completa
+Versión FINAL COMERCIAL: menús + multi-finca + suscripción por Nequi ($25.000 COP)
 """
 
 import os
@@ -10,7 +10,7 @@ import re
 import datetime
 from urllib.parse import urlparse
 
-print("🔧 Iniciando bot.py (versión multi-finca con menús)...")
+print("🔧 Iniciando bot.py (versión comercial multi-finca)...")
 
 # === 1. CONEXIÓN A POSTGRESQL CON MIGRACIÓN AUTOMÁTICA ===
 def inicializar_bd():
@@ -29,8 +29,8 @@ def inicializar_bd():
                 id SERIAL PRIMARY KEY,
                 nombre VARCHAR(100) UNIQUE NOT NULL,
                 telefono_dueño VARCHAR(25) UNIQUE NOT NULL,
-                suscripcion_activa BOOLEAN DEFAULT TRUE,
-                vencimiento_suscripcion DATE DEFAULT (CURRENT_DATE + INTERVAL '30 days')
+                suscripcion_activa BOOLEAN DEFAULT FALSE,
+                vencimiento_suscripcion DATE
             )
         ''')
 
@@ -107,7 +107,7 @@ def inicializar_bd():
 
         conn.commit()
         conn.close()
-        print("✅ Base de datos lista (multi-finca + menús).")
+        print("✅ Base de datos lista (multi-finca + suscripción).")
         return True
     except Exception as e:
         print(f"❌ Error al conectar con PostgreSQL: {e}")
@@ -168,7 +168,7 @@ def obtener_usuario_por_whatsapp(telefono):
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT u.id, u.nombre, u.rol, u.finca_id, f.nombre AS finca_nombre, f.suscripcion_activa
+                    SELECT u.id, u.nombre, u.rol, u.finca_id, f.nombre AS finca_nombre, f.suscripcion_activa, f.vencimiento_suscripcion
                     FROM usuarios u
                     JOIN fincas f ON u.finca_id = f.id
                     WHERE u.telefono_whatsapp = %s
@@ -181,7 +181,8 @@ def obtener_usuario_por_whatsapp(telefono):
                         "rol": row[2],
                         "finca_id": row[3],
                         "finca_nombre": row[4],
-                        "suscripcion_activa": row[5]
+                        "suscripcion_activa": row[5],
+                        "vencimiento_suscripcion": row[6]
                     }
     except Exception as e:
         print(f"❌ Error al buscar usuario: {e}")
@@ -201,10 +202,10 @@ def registrar_nueva_finca(nombre_finca, remitente):
                     return "❌ Ya estás registrado en una finca."
 
                 cursor.execute("""
-                    INSERT INTO fincas (nombre, telefono_dueño)
-                    VALUES (%s, %s)
+                    INSERT INTO fincas (nombre, telefono_dueño, suscripcion_activa, vencimiento_suscripcion)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING id
-                """, (nombre_finca, remitente))
+                """, (nombre_finca, remitente, False, None))
                 finca_id = cursor.fetchone()[0]
 
                 cursor.execute("""
@@ -212,31 +213,26 @@ def registrar_nueva_finca(nombre_finca, remitente):
                     VALUES (%s, %s, 'dueño', %s)
                 """, (remitente, "Dueño", finca_id))
             conn.commit()
-        vencimiento = datetime.date.today() + datetime.timedelta(days=30)
+        
         return (
-            f"✅ ¡Finca '{nombre_finca}' registrada!\n"
-            f"Tu suscripción es válida hasta el {vencimiento.strftime('%d/%m/%Y')}.\n\n"
-            "Elige una opción para registrar actividades:\n"
-            "1. 🌱 Siembra\n"
-            "2. 🌾 Producción\n"
-            "3. 💉 Sanidad animal\n"
-            "4. 🐷 Ingreso de animales\n"
-            "5. 🐄 Salida de animales\n"
-            "6. 💰 Gasto\n"
-            "7. 🛠️ Labor\n\n"
-            "Escribe 'fin' para salir."
+            f"🏡 ¡Finca '{nombre_finca}' registrada!\n\n"
+            "💳 **Para activarla, debes suscribirte mensualmente.**\n\n"
+            "**Valor:** $25.000 COP/mes\n"
+            "**Nequi:** 314 353 9351 (Omar Pachón)\n\n"
+            "1️⃣ Realiza el pago a este número.\n"
+            "2️⃣ Envía el comprobante (pantallazo del recibo Nequi).\n"
+            "3️⃣ Yo activaré tu finca manualmente en menos de 1 hora.\n\n"
+            "⏳ Mientras tanto, no podrás registrar actividades.\n"
+            "🔐 *Tu finca está creada, pero desactivada hasta que confirme el pago.*"
         )
     except psycopg2.IntegrityError as e:
-        error_str = str(e)
-        if "unique" in error_str.lower() and ("nombre" in error_str.lower() or "fincas_nombre" in error_str.lower()):
+        if "unique" in str(e).lower() and "nombre" in str(e).lower():
             return "❌ Ya existe una finca con ese nombre. Usa otro."
-        else:
-            return f"❌ Error de integridad: {error_str[:100]}"
+        return f"❌ Error de integridad: {str(e)[:100]}"
     except Exception as e:
-        import traceback
         error_msg = str(e)
-        # Devuelve un extracto del error en WhatsApp (máx 160 caracteres)
         return f"❌ ERROR: {error_msg[:120]}"
+
 def detectar_actividad(mensaje):
     mensaje = mensaje.lower()
     for actividad, palabras in SINONIMOS.items():
@@ -561,7 +557,7 @@ def consultar_estado_animal(arete):
     except Exception as e:
         return "❌ Error al consultar el animal. Inténtalo más tarde."
 
-# === 5. FLUJO CONVERSACIONAL COMPLETO (tu lógica original, adaptada) ===
+# === 5. FLUJO CONVERSACIONAL COMPLETO ===
 def iniciar_flujo_conversacional_existente(mensaje, user_key, state):
     msg = mensaje.strip().lower()
 
@@ -822,9 +818,15 @@ def procesar_mensaje_whatsapp(mensaje, remitente=None):
             )
 
     if not usuario_info["suscripcion_activa"]:
-        return "🔒 Tu suscripción ha expirado. Contacta al administrador."
+        return (
+            "🔒 Tu suscripción ha expirado o aún no se ha activado.\n\n"
+            "💳 **Para activarla, debes suscribirte mensualmente.**\n"
+            "**Valor:** $25.000 COP/mes\n"
+            "**Nequi:** 314 353 9351 (Omar Pachón)\n"
+            "Envía el comprobante para que active tu finca."
+        )
 
-    # Usuario existente: procesar mensaje en su contexto
+    # Usuario existente y activo: procesar mensaje en su contexto
     if mensaje.lower().startswith("estado animal "):
         arete = mensaje.split(" ", 2)[2].strip().upper()
         return consultar_estado_animal(arete)
