@@ -28,7 +28,7 @@ def inicializar_bd():
             CREATE TABLE IF NOT EXISTS fincas (
                 id SERIAL PRIMARY KEY,
                 nombre VARCHAR(100) UNIQUE NOT NULL,
-                telefono_dueño VARCHAR(20) UNIQUE NOT NULL,
+                telefono_dueño VARCHAR(25) UNIQUE NOT NULL,
                 suscripcion_activa BOOLEAN DEFAULT TRUE,
                 vencimiento_suscripcion DATE DEFAULT (CURRENT_DATE + INTERVAL '30 days')
             )
@@ -37,7 +37,7 @@ def inicializar_bd():
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS usuarios (
                 id SERIAL PRIMARY KEY,
-                telefono_whatsapp VARCHAR(20) UNIQUE NOT NULL,
+                telefono_whatsapp VARCHAR(25) UNIQUE NOT NULL,
                 nombre VARCHAR(100),
                 rol VARCHAR(20) NOT NULL CHECK (rol IN ('dueño', 'supervisor', 'trabajador')),
                 finca_id INTEGER NOT NULL REFERENCES fincas(id) ON DELETE CASCADE
