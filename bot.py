@@ -231,7 +231,7 @@ def registrar_nueva_finca(nombre_finca, remitente):
         if "unique" in error_str.lower() and ("nombre" in error_str.lower() or "fincas_nombre" in error_str.lower()):
             return "❌ Ya existe una finca con ese nombre. Usa otro."
         else:
-        return f"❌ Error de integridad: {error_str[:100]}"
+            return f"❌ Error de integridad: {error_str[:100]}"
     except Exception as e:
         import traceback
         error_msg = str(e)
