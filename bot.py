@@ -226,12 +226,17 @@ def registrar_nueva_finca(nombre_finca, remitente):
             "7. 🛠️ Labor\n\n"
             "Escribe 'fin' para salir."
         )
-    except psycopg2.IntegrityError:
-        return "❌ Ya existe una finca con ese nombre. Usa otro."
+    except psycopg2.IntegrityError as e:
+        error_str = str(e)
+        if "unique" in error_str.lower() and ("nombre" in error_str.lower() or "fincas_nombre" in error_str.lower()):
+            return "❌ Ya existe una finca con ese nombre. Usa otro."
+        else:
+        return f"❌ Error de integridad: {error_str[:100]}"
     except Exception as e:
-        print(f"❌ Error al registrar finca: {e}")
-        return "❌ No se pudo crear la finca."
-
+        import traceback
+        error_msg = str(e)
+        # Devuelve un extracto del error en WhatsApp (máx 160 caracteres)
+        return f"❌ ERROR: {error_msg[:120]}"
 def detectar_actividad(mensaje):
     mensaje = mensaje.lower()
     for actividad, palabras in SINONIMOS.items():
