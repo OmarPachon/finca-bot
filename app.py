@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-app.py - Webhook para WhatsApp + Twilio + Ruta temporal para reiniciar BD
+app.py - Webhook para WhatsApp + Twilio + Activación manual de fincas
 """
 
 import os
@@ -64,6 +64,60 @@ def webhook():
     print("📤 [WEBHOOK] Enviando respuesta a Twilio")
     return str(r)
 
+# === RUTA: ACTIVAR FINCA MANUALMENTE (uso administrador) ===
+@app.route("/activar-finca")
+def activar_finca():
+    finca_id = request.args.get("id")
+    if not finca_id:
+        return "❌ Usa: /activar-finca?id=123", 400
+    try:
+        finca_id = int(finca_id)
+        database_url = os.environ.get("DATABASE_URL")
+        if not database_url:
+            return "❌ DATABASE_URL no configurada", 500
+
+        with psycopg2.connect(database_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE fincas 
+                    SET suscripcion_activa = TRUE, 
+                        vencimiento_suscripcion = CURRENT_DATE + INTERVAL '30 days'
+                    WHERE id = %s
+                """, (finca_id,))
+                if cur.rowcount == 0:
+                    return f"❌ No se encontró la finca con ID {finca_id}", 404
+                conn.commit()
+        return f"✅ Finca ID {finca_id} activada hasta {datetime.date.today() + datetime.timedelta(days=30)}", 200
+    except Exception as e:
+        return f"❌ Error al activar finca: {e}", 500
+
+# === RUTA: CONSULTAR MI FINCA_ID (para dueños) ===
+@app.route("/mi-finca-id")
+def mi_finca_id():
+    telefono = request.args.get("telefono")
+    if not telefono:
+        return "❌ Usa: /mi-finca-id?telefono=whatsapp:+573143539351", 400
+    try:
+        database_url = os.environ.get("DATABASE_URL")
+        if not database_url:
+            return "❌ DATABASE_URL no configurada", 500
+
+        with psycopg2.connect(database_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT f.id, f.nombre 
+                    FROM fincas f
+                    JOIN usuarios u ON f.id = u.finca_id
+                    WHERE u.telefono_whatsapp = %s
+                """, (telefono,))
+                row = cur.fetchone()
+                if row:
+                    return f"📱 Tu finca: **{row[1]}**\n🆔 ID para activación: **{row[0]}**\n\nEnvía este ID junto con tu comprobante de pago.", 200
+                else:
+                    return "❌ No estás registrado en ninguna finca.", 404
+    except Exception as e:
+        return f"❌ Error al consultar finca: {e}", 500
+
 # === RUTA TEMPORAL: REINICIAR BASE DE DATOS (solo para Render Free) ===
 @app.route("/reiniciar-bd")
 def reiniciar_bd():
@@ -75,7 +129,6 @@ def reiniciar_bd():
         import psycopg2
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cur:
-                # Eliminar todas las tablas en orden inverso (CASCADE maneja dependencias)
                 cur.execute("""
                     DROP TABLE IF EXISTS 
                         registros, 
@@ -87,7 +140,6 @@ def reiniciar_bd():
                 """)
                 conn.commit()
         
-        # Reutilizar tu función de inicialización
         if bot and hasattr(bot, 'inicializar_bd'):
             if bot.inicializar_bd():
                 return "✅ Base de datos reiniciada completamente.\n¡Ahora puedes registrar tu finca desde WhatsApp!", 200
