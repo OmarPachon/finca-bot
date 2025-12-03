@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 bot.py - Sistema de Registro Conversacional Multi-Finca
-Versión FINAL COMERCIAL: menús + multi-finca + suscripción por Nequi ($25.000 COP)
+Versión FINAL COMERCIAL con todas las mejoras solicitadas por Omar
 """
 
 import os
@@ -10,7 +10,7 @@ import re
 import datetime
 from urllib.parse import urlparse
 
-print("🔧 Iniciando bot.py (versión comercial multi-finca)...")
+print("🔧 Iniciando bot.py (versión comercial final)...")
 
 # === 1. CONEXIÓN A POSTGRESQL CON MIGRACIÓN AUTOMÁTICA ===
 def inicializar_bd():
@@ -119,27 +119,35 @@ except Exception as e:
     print(f"❌ Error crítico al inicializar BD: {e}")
     BD_OK = False
 
-# === 2. SINÓNIMOS MEJORADOS ===
+# === 2. SINÓNIMOS MEJORADOS (sin solapamiento) ===
 SINONIMOS = {
     "siembra": [
         "sembrar", "siembra", "plantar", "resiembra", "resembrar",
         "resembramos", "sembramos", "plantamos"
     ],
     "produccion": [
+        # Cultivos
         "cosechar", "cosecha", "recolectar", "cortar", "descacotar",
-        "cosechamos", "recolectamos","producir", "producción","leche", "carne", "huevos", "litros", "kilos", "kg",
-        "vendimos", "sacamos producto", "salieron","maíz", "papa", "arroz", "cacao", "café", "yuca", "plátano", "frijol", "trigo", "cebolla"
+        "cosechamos", "recolectamos", "produccion", "producción",
+        "maíz", "papa", "arroz", "cacao", "café", "yuca", "plátano", "frijol", "trigo", "cebolla",
+        # Productos animales (no animales vivos)
+        "leche", "carne", "huevos", "litros", "kilos", "kg",
+        "vendimos producto", "sacamos producto", "salieron producto"
     ],
     "sanidad_animal": [
         "vacunar", "vacuna", "inyectar", "desparasitar", "purgar",
         "medicar", "tratamiento", "sanidad", "chequeo",
         "aftosa", "brucelosis", "desparasitamos", "vermífugo",
-        "vacunamos", "inyectamos", "pastilla", "bolo", "curacion","cirugia"
+        "vacunamos", "inyectamos", "pastilla", "bolo", "curacion", "cirugia"
     ],
     "ingreso_animal": [
+        # Nacimientos
         "nacer", "nació", "nacieron", "nacimiento", "parto",
-        "comprar animal", "compramos", "llegó animal", "adquirimos",
-        "nuevo animal", "ingreso", "compra de", "lechón", "ternero"
+        # Compras EXPLÍCITAS de animales
+        "comprar animal", "compra de animal", "compramos animales", "compramos un animal",
+        "llegó animal", "adquirimos animal", "nuevo animal", "ingreso de animal",
+        # Tipos de animales
+        "lechón", "cerda", "verraco", "ceba", "toro", "ternero", "ternera", "novillo", "vaquilla"
     ],
     "salida_animal": [
         "vender", "vendimos", "venta de", "se murieron", "muertes",
@@ -147,14 +155,17 @@ SINONIMOS = {
         "muerto", "vendido"
     ],
     "gasto": [
+        # Compras GENÉRICAS (insumos, medicinas, etc.)
         "gastar", "gasto", "pagar", "comprar", "compra",
-        "factura", "costo", "inversión", "egreso"
+        "compramos", "compra de", "factura", "costo", "inversión", "egreso",
+        # Refuerzo
+        "medicina", "alimento", "concentrado", "vacuna", "jornal", "herramienta", "repuesto"
     ],
     "labor": [
         "limpiar", "fumigar", "rociar", "castrar", "podar", "abonar",
         "reparar", "alimentar", "dar comida", "echamos comida",
         "lavar", "destetar", "marcar", "marcaje", "cerca", "cercar",
-        "trabajar en", "hicimos labor", "actividad en"
+        "trabajar en", "hicimos labor", "actividad en", "alimentación"
     ]
 }
 
@@ -245,32 +256,41 @@ def extraer_datos_animal(mensaje):
     datos = {"especie": None, "id_externo": None, "marca_o_arete": None, "categoria": None, "corral": None, "peso": None}
     mensaje = mensaje.lower()
 
-    if "cerdo" in mensaje or any(c in mensaje for c in ["lechón", "cerda", "verraco", "ceba"]):
+    # Detección de especie
+    porcino_palabras = ["cerdo", "lechón", "cerda", "verraco", "ceba", "chancho", "cochino"]
+    bovino_palabras = ["vaca", "toro", "ternero", "ternera", "novillo", "vaquilla", "buey", "ganado"]
+    
+    if any(p in mensaje for p in porcino_palabras):
         datos["especie"] = "porcino"
-    elif "vaca" in mensaje or any(c in mensaje for c in ["toro", "ternero", "ternera", "novillo", "vaquilla"]):
+    elif any(p in mensaje for p in bovino_palabras):
         datos["especie"] = "bovino"
 
+    # Extracción de marca o arete
     arete = re.search(r"(?:arete|chapeta)\s+(\d+)", mensaje)
     if arete:
         num = arete.group(1)
         datos["marca_o_arete"] = num
-        datos["id_externo"] = f"C-{num}"
+        datos["id_externo"] = f"C-{num}" if datos["especie"] == "porcino" else f"V-{num}"
 
     marca = re.search(r"marca\s+([a-z0-9-]+)", mensaje, re.IGNORECASE)
     if marca:
         cod = marca.group(1).upper()
         datos["marca_o_arete"] = cod
-        datos["id_externo"] = f"V-M-{cod}"
+        prefijo = "C-" if datos["especie"] == "porcino" else "V-M-"
+        datos["id_externo"] = f"{prefijo}{cod}"
 
+    # Categoría
     categorias_validas = ["lechón", "cerda", "verraco", "ceba", "toro", "ternero", "ternera", "novillo", "vaquilla", "engorda", "lechera"]
     for cat in categorias_validas:
         if cat in mensaje:
             datos["categoria"] = cat
             break
 
+    # Corral
     corral = re.search(r"(?:corral|lugar)\s+([a-z0-9]+)", mensaje, re.IGNORECASE)
     if corral: datos["corral"] = corral.group(1).upper()
 
+    # Peso
     peso = re.search(r"peso\s*(\d+(?:\.\d+)?)\s*(kg|kilo|kilos)", mensaje)
     if peso: datos["peso"] = float(peso.group(1))
 
@@ -527,7 +547,7 @@ def consultar_estado_animal(arete):
                 """, (arete, arete))
                 row = cursor.fetchone()
                 if not row:
-                    return f"❌ No encontré ningún animal con arete o marca '{arete}'."
+                    return f"❌ No encontré ningún animal con marca o arete '{arete}'."
 
                 especie, estado, peso, corral, fecha_reg, obs = row
 
@@ -580,7 +600,7 @@ def iniciar_flujo_conversacional_existente(mensaje, user_key, state):
         elif msg in ["3", "sanidad", "vacuna", "desparasitar"]:
             state["data"]["tipo"] = "sanidad_animal"
             state["step"] = "waiting_for_detalle"
-            return "💉 ¿Fue vacuna o desparasitación? (Ej: aftosa, gusanos)"
+            return "💉 ¿Fue vacuna o desparasitación?"
 
         elif msg in ["4", "ingreso", "compra", "nacimiento"]:
             state["data"]["tipo"] = "ingreso_animal"
@@ -702,7 +722,7 @@ def iniciar_flujo_conversacional_existente(mensaje, user_key, state):
     elif state["step"] == "waiting_for_lugar":
         state["data"]["lugar"] = mensaje
         state["step"] = "waiting_for_observacion"
-        return "📝 ¿Observación? (Ej: aretes C-101 a C-103)\nEscribe 'fin' para guardar."
+        return "📝 ¿Observación? (Ej: marca 201 a 205)\nEscribe 'fin' para guardar."
 
     elif state["step"] == "waiting_for_observacion":
         if msg in ["fin", "salir", "listo", "guardar", "0"]:
