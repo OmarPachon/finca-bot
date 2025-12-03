@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 bot.py - Sistema de Registro Conversacional Multi-Finca
-Versión MULTI-FINCA: soporta múltiples fincas independientes gestionadas por WhatsApp.
+Versión FINAL: menús obligatorios + multi-finca + empleados + lógica completa
 """
 
 import os
@@ -10,7 +10,7 @@ import re
 import datetime
 from urllib.parse import urlparse
 
-print("🔧 Iniciando bot.py (versión multi-finca)...")
+print("🔧 Iniciando bot.py (versión multi-finca con menús)...")
 
 # === 1. CONEXIÓN A POSTGRESQL CON MIGRACIÓN AUTOMÁTICA ===
 def inicializar_bd():
@@ -23,7 +23,27 @@ def inicializar_bd():
         conn = psycopg2.connect(database_url)
         cursor = conn.cursor()
 
-        # Tablas principales (ya existentes)
+        # Tablas principales
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS fincas (
+                id SERIAL PRIMARY KEY,
+                nombre VARCHAR(100) UNIQUE NOT NULL,
+                telefono_dueño VARCHAR(20) UNIQUE NOT NULL,
+                suscripcion_activa BOOLEAN DEFAULT TRUE,
+                vencimiento_suscripcion DATE DEFAULT (CURRENT_DATE + INTERVAL '30 days')
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS usuarios (
+                id SERIAL PRIMARY KEY,
+                telefono_whatsapp VARCHAR(20) UNIQUE NOT NULL,
+                nombre VARCHAR(100),
+                rol VARCHAR(20) NOT NULL CHECK (rol IN ('dueño', 'supervisor', 'trabajador')),
+                finca_id INTEGER NOT NULL REFERENCES fincas(id) ON DELETE CASCADE
+            )
+        ''')
+
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS animales (
                 id SERIAL PRIMARY KEY,
@@ -72,28 +92,7 @@ def inicializar_bd():
             )
         ''')
 
-        # === NUEVAS TABLAS: multi-tenencia ===
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS fincas (
-                id SERIAL PRIMARY KEY,
-                nombre VARCHAR(100) UNIQUE NOT NULL,
-                telefono_dueño VARCHAR(20) UNIQUE NOT NULL,
-                suscripcion_activa BOOLEAN DEFAULT TRUE,
-                vencimiento_suscripcion DATE DEFAULT (CURRENT_DATE + INTERVAL '30 days')
-            )
-        ''')
-
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS usuarios (
-                id SERIAL PRIMARY KEY,
-                telefono_whatsapp VARCHAR(20) UNIQUE NOT NULL,
-                nombre VARCHAR(100),
-                rol VARCHAR(20) NOT NULL CHECK (rol IN ('dueño', 'supervisor', 'trabajador')),
-                finca_id INTEGER NOT NULL REFERENCES fincas(id) ON DELETE CASCADE
-            )
-        ''')
-
-        # === MIGRACIÓN: asegurar columna 'jornales' ===
+        # Migración: asegurar columna 'jornales'
         cursor.execute("""
             DO $$
             BEGIN
@@ -108,7 +107,7 @@ def inicializar_bd():
 
         conn.commit()
         conn.close()
-        print("✅ Base de datos lista (con soporte multi-finca).")
+        print("✅ Base de datos lista (multi-finca + menús).")
         return True
     except Exception as e:
         print(f"❌ Error al conectar con PostgreSQL: {e}")
@@ -120,7 +119,7 @@ except Exception as e:
     print(f"❌ Error crítico al inicializar BD: {e}")
     BD_OK = False
 
-# === 2. SINÓNIMOS MEJORADOS (igual que antes) ===
+# === 2. SINÓNIMOS MEJORADOS ===
 SINONIMOS = {
     "siembra": [
         "sembrar", "siembra", "plantar", "resiembra", "resembrar",
@@ -162,7 +161,7 @@ SINONIMOS = {
 # === 3. ESTADO DEL USUARIO ===
 user_state = {}
 
-# === 4. FUNCIONES DE SOPORTE MULTI-FINCA ===
+# === 4. FUNCIONES DE SOPORTE ===
 def obtener_usuario_por_whatsapp(telefono):
     try:
         database_url = os.environ.get("DATABASE_URL")
@@ -188,14 +187,11 @@ def obtener_usuario_por_whatsapp(telefono):
         print(f"❌ Error al buscar usuario: {e}")
     return None
 
-def registrar_nueva_finca(mensaje, remitente):
+def registrar_nueva_finca(nombre_finca, remitente):
     try:
-        partes = mensaje.split(" ", 1)
-        if len(partes) < 2:
-            return "❌ Usa: REGISTRAR_FINCA NombreDeTuFinca"
-        nombre_finca = partes[1].strip()
-        if len(nombre_finca) < 3 or len(nombre_finca) > 50:
-            return "❌ El nombre debe tener entre 3 y 50 caracteres."
+        nombre_finca = nombre_finca.strip()
+        if len(nombre_finca) < 3:
+            return "❌ El nombre debe tener al menos 3 caracteres."
 
         database_url = os.environ.get("DATABASE_URL")
         with psycopg2.connect(database_url) as conn:
@@ -218,19 +214,24 @@ def registrar_nueva_finca(mensaje, remitente):
             conn.commit()
         vencimiento = datetime.date.today() + datetime.timedelta(days=30)
         return (
-            f"✅ ¡Bienvenido a Finca Digital!\n"
-            f"Tu finca '{nombre_finca}' está activa hasta el {vencimiento.strftime('%d/%m/%Y')}.\n\n"
-            "Escribe 'ayuda' para comenzar a registrar actividades."
+            f"✅ ¡Finca '{nombre_finca}' registrada!\n"
+            f"Tu suscripción es válida hasta el {vencimiento.strftime('%d/%m/%Y')}.\n\n"
+            "Elige una opción para registrar actividades:\n"
+            "1. 🌱 Siembra\n"
+            "2. 🌾 Producción\n"
+            "3. 💉 Sanidad animal\n"
+            "4. 🐷 Ingreso de animales\n"
+            "5. 🐄 Salida de animales\n"
+            "6. 💰 Gasto\n"
+            "7. 🛠️ Labor\n\n"
+            "Escribe 'fin' para salir."
         )
-    except psycopg2.IntegrityError as e:
-        if "unique" in str(e).lower():
-            return "❌ Ya existe una finca con ese nombre. Usa otro."
-        return "❌ Error al crear la finca."
+    except psycopg2.IntegrityError:
+        return "❌ Ya existe una finca con ese nombre. Usa otro."
     except Exception as e:
-        print(f"❌ Error inesperado al registrar finca: {e}")
-        return "❌ No se pudo crear tu finca. Inténtalo más tarde."
+        print(f"❌ Error al registrar finca: {e}")
+        return "❌ No se pudo crear la finca."
 
-# === 5. DETECTAR ACTIVIDAD ===
 def detectar_actividad(mensaje):
     mensaje = mensaje.lower()
     for actividad, palabras in SINONIMOS.items():
@@ -239,7 +240,6 @@ def detectar_actividad(mensaje):
                 return actividad
     return "general"
 
-# === 6. EXTRAER DATOS DE ANIMAL ===
 def extraer_datos_animal(mensaje):
     datos = {"especie": None, "id_externo": None, "marca_o_arete": None, "categoria": None, "corral": None, "peso": None}
     mensaje = mensaje.lower()
@@ -275,7 +275,6 @@ def extraer_datos_animal(mensaje):
 
     return datos
 
-# === 7. GUARDAR REGISTRO GENERAL (con finca_id) ===
 def guardar_registro(tipo_actividad, accion, detalle, lugar=None, cantidad=None, valor=0, unidad=None, observacion=None, jornales=None, finca_id=None, usuario_id=None):
     print(f"🔍 GUARDANDO REGISTRO en finca {finca_id}: {tipo_actividad} | {detalle}")
     try:
@@ -298,7 +297,6 @@ def guardar_registro(tipo_actividad, accion, detalle, lugar=None, cantidad=None,
         import traceback
         print(traceback.format_exc())
 
-# === 8. GENERAR REPORTE EN TEXTO (filtrado por finca) ===
 def generar_reporte(frecuencia="semanal", formato="texto", finca_id=None):
     if finca_id is None:
         return "❌ No se puede generar reporte sin finca."
@@ -502,7 +500,6 @@ def generar_reporte(frecuencia="semanal", formato="texto", finca_id=None):
 
     return registros
 
-# === 9. COMANDO SECRETO (solo finca original) ===
 def vaciar_tablas():
     try:
         database_url = os.environ.get("DATABASE_URL")
@@ -518,10 +515,7 @@ def vaciar_tablas():
         print(f"❌ Error al limpiar BD: {e}")
         return "❌ No se pudo limpiar la base de datos."
 
-# === 10. CONSULTAR ESTADO ANIMAL ===
 def consultar_estado_animal(arete):
-    # Nota: esto debería filtrar por finca, pero como el arete es único global, lo dejamos así por ahora.
-    # En el futuro, podrías añadir finca_id al comando: "estado animal C-101 finca MiFinca"
     try:
         database_url = os.environ.get("DATABASE_URL")
         with psycopg2.connect(database_url) as conn:
@@ -562,13 +556,14 @@ def consultar_estado_animal(arete):
     except Exception as e:
         return "❌ Error al consultar el animal. Inténtalo más tarde."
 
-# === 11. FLUJO CONVERSACIONAL (versión adaptada) ===
+# === 5. FLUJO CONVERSACIONAL COMPLETO (tu lógica original, adaptada) ===
 def iniciar_flujo_conversacional_existente(mensaje, user_key, state):
     msg = mensaje.strip().lower()
 
     if state["step"] == "waiting_for_category":
         if msg in ["fin", "salir", "cancelar", "no", "nada"]:
-            del user_state[user_key]
+            if user_key in user_state:
+                del user_state[user_key]
             return "✅ ¡Gracias por usar Finca Digital! Vuelve cuando necesites."
 
         if msg in ["1", "siembra", "sembrar"]:
@@ -618,8 +613,7 @@ def iniciar_flujo_conversacional_existente(mensaje, user_key, state):
                     return f"✅ Entendí: {tipo_detectado}. ¿Qué detalle quieres registrar?"
 
             return (
-                "🌿 ¡Hola! Bienvenido a Finca Digital.\n\n"
-                "¿Qué actividad vamos a registrar hoy?\n\n"
+                "🌿 Elige una opción:\n"
                 "1. 🌱 Siembra\n"
                 "2. 🌾 Producción (cosecha, leche, carne)\n"
                 "3. 💉 Sanidad animal\n"
@@ -732,16 +726,8 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
         }
 
     state = user_state[user_key]
-    msg = mensaje.strip().lower()
-
-    if msg in ["fin", "salir", "cancelar", "no", "nada"]:
-        if user_key in user_state:
-            del user_state[user_key]
-        return "✅ ¡Gracias por usar Finca Digital! Vuelve cuando necesites."
-
     respuesta = iniciar_flujo_conversacional_existente(mensaje, user_key, state)
 
-    # Si el flujo terminó, guardar con contexto
     if state.get("completed"):
         datos = state["data"]
         tipo = datos["tipo"]
@@ -795,16 +781,45 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
 
     return respuesta
 
-def procesar_en_contexto_finca(mensaje, usuario_info):
+# === 6. ENTRADA PRINCIPAL: MENÚ OBLIGATORIO ===
+def procesar_mensaje_whatsapp(mensaje, remitente=None):
+    print(f"🔍 [BOT] Procesando mensaje: '{mensaje}' de {remitente}")
+    if not remitente:
+        return "❌ Error: remitente no identificado."
+
     mensaje = mensaje.strip()
     if not mensaje:
         return "❌ Mensaje vacío."
 
-    if mensaje.lower() == "limpiar bd":
-        # Solo permitido para la finca original (id=1) y dueños
-        if usuario_info["rol"] == "dueño" and usuario_info["finca_id"] == 1:
-            return vaciar_tablas()
+    # Si ya está en proceso de registrar finca (segunda respuesta)
+    if remitente in user_state and user_state[remitente].get("esperando_nombre_finca"):
+        nombre_finca = mensaje
+        del user_state[remitente]
+        return registrar_nueva_finca(nombre_finca, remitente)
 
+    # Ver si ya está registrado
+    usuario_info = obtener_usuario_por_whatsapp(remitente)
+
+    if not usuario_info:
+        # Nuevo usuario: solo puede registrar finca
+        if mensaje.lower() in ["8", "finca", "registrar", "hola", "hi", "buenos días", "buenas", "menu", "ayuda"]:
+            user_state[remitente] = {"esperando_nombre_finca": True}
+            return (
+                "🏡 Bienvenido a Finca Digital.\n\n"
+                "Para comenzar, ¿cómo se llama tu finca?\n"
+                "(Ej: Hacienda La Tática)"
+            )
+        else:
+            return (
+                "🏡 Bienvenido.\n\n"
+                "8. 🏡 Registrar mi finca\n\n"
+                "Escribe '8' para comenzar."
+            )
+
+    if not usuario_info["suscripcion_activa"]:
+        return "🔒 Tu suscripción ha expirado. Contacta al administrador."
+
+    # Usuario existente: procesar mensaje en su contexto
     if mensaje.lower().startswith("estado animal "):
         arete = mensaje.split(" ", 2)[2].strip().upper()
         return consultar_estado_animal(arete)
@@ -817,45 +832,20 @@ def procesar_en_contexto_finca(mensaje, usuario_info):
         return generar_reporte(frecuencia=freq, formato="texto", finca_id=usuario_info["finca_id"])
 
     if mensaje.lower().startswith("exportar reporte"):
-        return "📎 El reporte en Excel estará disponible pronto directamente en tu WhatsApp."
+        return "📎 El reporte en Excel estará disponible pronto en tu WhatsApp."
 
-    if mensaje.strip().lower() in ["ayuda", "help"]:
+    if mensaje.strip().lower() in ["ayuda", "help", "menu", "hola"]:
         return (
             f"🌿 Bienvenido a {usuario_info['finca_nombre']}.\n\n"
-            "Escribe libremente o usa el menú.\n"
-            "Ej: 'vacunamos 25 cerdos', 'nacieron 5 lechones'\n\n"
-            "📊 Reportes: 'reporte semanal'\n"
-            "🔍 Estado: 'estado animal C-101'\n"
-            "🚪 Salir: 'fin' o '0'"
+            "Elige una opción:\n"
+            "1. 🌱 Siembra\n"
+            "2. 🌾 Producción\n"
+            "3. 💉 Sanidad\n"
+            "4. 🐷 Ingreso animal\n"
+            "5. 🐄 Salida animal\n"
+            "6. 💰 Gasto\n"
+            "7. 🛠️ Labor\n\n"
+            "Escribe 'fin' para salir."
         )
 
     return iniciar_flujo_conversacional_con_finca(mensaje, usuario_info)
-
-# === 12. PROCESAR MENSAJE WHATSAPP (punto de entrada) ===
-def procesar_mensaje_whatsapp(mensaje, remitente=None):
-    print(f"🔍 [BOT] Procesando mensaje: '{mensaje}' de {remitente}")
-    if not remitente:
-        return "❌ Error: remitente no identificado."
-
-    mensaje = mensaje.strip()
-    if not mensaje:
-        return "❌ Mensaje vacío."
-
-    # Registro de nueva finca
-    if mensaje.lower().startswith("registrar_finca "):
-        return registrar_nueva_finca(mensaje, remitente)
-
-    # Buscar usuario
-    usuario_info = obtener_usuario_por_whatsapp(remitente)
-    if not usuario_info:
-        return (
-            "👋 ¡Hola! Parece que no estás registrado.\n"
-            "Si eres dueño de una finca, escribe:\n"
-            "REGISTRAR_FINCA NombreDeTuFinca\n\n"
-            "Ej: REGISTRAR_FINCA El Frayle"
-        )
-
-    if not usuario_info["suscripcion_activa"]:
-        return "🔒 Tu finca no tiene suscripción activa. Contacta al administrador."
-
-    return procesar_en_contexto_finca(mensaje, usuario_info)
