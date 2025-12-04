@@ -122,8 +122,8 @@ except Exception as e:
 # === 2. PALABRAS CLAVE PARA ANIMALES (NO SINÓNIMOS DE ACTIVIDAD) ===
 # Solo usadas en extraer_datos_animal
 PORCINO_PALABRAS = ["cerdo", "lechón", "cerda", "verraco", "ceba", "chancho", "cochino"]
-BOVINO_PALABRAS = ["vaca", "toro", "ternero", "ternera", "novillo", "vaquilla", "buey", "ganado"]
-CATEGORIAS_VALIDAS = ["lechón", "cerda", "verraco", "ceba", "toro", "ternero", "ternera", "novillo", "vaquilla", "engorda", "lechera"]
+BOVINO_PALABRAS = ["vaca", "toro", "ternero", "ternera", "novillo","novilla", "vaquilla", "buey", "ganado"]
+CATEGORIAS_VALIDAS = ["lechón", "cerda", "verraco", "ceba", "toro", "ternero", "ternera", "novillo","novilla" "vaquilla", "engorda", "lechera"]
 
 # === 3. ESTADO DEL USUARIO ===
 user_state = {}

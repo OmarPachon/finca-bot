@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-app.py - Webhook para WhatsApp + Twilio + Activación manual de fincas
+app.py - Webhook para WhatsApp + Twilio + Gestión completa de fincas y empleados
 """
 
 import os
@@ -8,10 +8,8 @@ import sys
 import traceback
 import datetime
 import psycopg2
-import io
-from flask import Flask, request, send_file
+from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
-import pandas as pd
 
 print("🚀 Iniciando app.py...")
 
@@ -64,32 +62,81 @@ def webhook():
     print("📤 [WEBHOOK] Enviando respuesta a Twilio")
     return str(r)
 
-# === RUTA: ACTIVAR FINCA MANUALMENTE (uso administrador) ===
-@app.route("/activar-finca")
-def activar_finca():
-    finca_id = request.args.get("id")
-    if not finca_id:
-        return "❌ Usa: /activar-finca?id=123", 400
+# === RUTA: ACTIVAR FINCA CON EMPLEADOS (uso administrador) ===
+@app.route("/activar-finca-con-empleados")
+def activar_finca_con_empleados():
+    nombre_finca = request.args.get("nombre")
+    telefono_dueno = request.args.get("telefono_dueno")
+    empleados = request.args.get("empleados", "").strip()
+    
+    if not nombre_finca or not telefono_dueno:
+        return (
+            "❌ Faltan datos.\n"
+            "Usa: ?nombre=MiFinca&telefono_dueno=whatsapp:+57314...&empleados=whatsapp:+57310...,whatsapp:+57311..."
+        ), 400
+
+    # Procesar lista de empleados
+    lista_empleados = []
+    if empleados:
+        lista_empleados = [tel.strip() for tel in empleados.split(",") if tel.strip()]
+    
+    if len(lista_empleados) > 3:
+        return "❌ Máximo 3 empleados permitidos por finca.", 400
+
+    # Validar formato de números
+    all_numbers = [telefono_dueno] + lista_empleados
+    for num in all_numbers:
+        if not num.startswith("whatsapp:+57") or len(num) < 15:
+            return f"❌ Número inválido: {num}. Usa formato: whatsapp:+573143539351", 400
+
     try:
-        finca_id = int(finca_id)
         database_url = os.environ.get("DATABASE_URL")
         if not database_url:
             return "❌ DATABASE_URL no configurada", 500
 
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cur:
+                # Crear finca
                 cur.execute("""
-                    UPDATE fincas 
-                    SET suscripcion_activa = TRUE, 
-                        vencimiento_suscripcion = CURRENT_DATE + INTERVAL '30 days'
-                    WHERE id = %s
-                """, (finca_id,))
-                if cur.rowcount == 0:
-                    return f"❌ No se encontró la finca con ID {finca_id}", 404
+                    INSERT INTO fincas (nombre, telefono_dueño, suscripcion_activa, vencimiento_suscripcion)
+                    VALUES (%s, %s, %s, CURRENT_DATE + INTERVAL '30 days')
+                    ON CONFLICT (nombre) DO UPDATE 
+                    SET telefono_dueño = EXCLUDED.telefono_dueño,
+                        suscripcion_activa = EXCLUDED.suscripcion_activa,
+                        vencimiento_suscripcion = EXCLUDED.vencimiento_suscripcion
+                    RETURNING id
+                """, (nombre_finca, telefono_dueno, True))
+                finca_id = cur.fetchone()[0]
+
+                # Registrar dueño
+                cur.execute("""
+                    INSERT INTO usuarios (telefono_whatsapp, nombre, rol, finca_id)
+                    VALUES (%s, %s, 'dueño', %s)
+                    ON CONFLICT (telefono_whatsapp) DO UPDATE 
+                    SET finca_id = EXCLUDED.finca_id
+                """, (telefono_dueno, "Dueño", finca_id))
+
+                # Registrar empleados
+                for emp in lista_empleados:
+                    cur.execute("""
+                        INSERT INTO usuarios (telefono_whatsapp, nombre, rol, finca_id)
+                        VALUES (%s, %s, 'trabajador', %s)
+                        ON CONFLICT (telefono_whatsapp) DO UPDATE 
+                        SET finca_id = EXCLUDED.finca_id
+                    """, (emp, "Empleado", finca_id))
+
                 conn.commit()
-        return f"✅ Finca ID {finca_id} activada hasta {datetime.date.today() + datetime.timedelta(days=30)}", 200
+        
+        empleados_txt = ", ".join(lista_empleados) if lista_empleados else "ninguno"
+        return (
+            f"✅ Finca '{nombre_finca}' activada con éxito.\n"
+            f"• Dueño: {telefono_dueno}\n"
+            f"• Empleados ({len(lista_empleados)}): {empleados_txt}\n"
+            f"• Válida hasta: {datetime.date.today() + datetime.timedelta(days=30)}"
+        ), 200
+
     except Exception as e:
-        return f"❌ Error al activar finca: {e}", 500
+        return f"❌ Error al activar finca con empleados: {e}", 500
 
 # === RUTA: CONSULTAR MI FINCA_ID (para dueños) ===
 @app.route("/mi-finca-id")
@@ -112,13 +159,17 @@ def mi_finca_id():
                 """, (telefono,))
                 row = cur.fetchone()
                 if row:
-                    return f"📱 Tu finca: **{row[1]}**\n🆔 ID para activación: **{row[0]}**\n\nEnvía este ID junto con tu comprobante de pago.", 200
+                    return (
+                        f"📱 Tu finca: **{row[1]}**\n"
+                        f"🆔 ID: **{row[0]}**\n\n"
+                        "Envía este ID junto con tu comprobante de pago."
+                    ), 200
                 else:
                     return "❌ No estás registrado en ninguna finca.", 404
     except Exception as e:
         return f"❌ Error al consultar finca: {e}", 500
 
-# === RUTA TEMPORAL: REINICIAR BASE DE DATOS (solo para Render Free) ===
+# === RUTA TEMPORAL: REINICIAR BASE DE DATOS ===
 @app.route("/reiniciar-bd")
 def reiniciar_bd():
     try:
@@ -126,7 +177,6 @@ def reiniciar_bd():
         if not database_url:
             return "❌ DATABASE_URL no configurada en Render.", 500
 
-        import psycopg2
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cur:
                 cur.execute("""
@@ -149,12 +199,11 @@ def reiniciar_bd():
             return "⚠️ El módulo 'bot' no está disponible para reinicializar.", 500
 
     except Exception as e:
-        import traceback
         error_msg = f"❌ Error al reiniciar BD:\n{type(e).__name__}: {e}\n\n{traceback.format_exc()}"
         print(error_msg)
         return error_msg, 500
 
-# === RUTA DE REPORTE (DESACTIVADA POR SEGURIDAD) ===
+# === RUTA DE REPORTE (DESACTIVADA) ===
 @app.route("/reporte")
 def descargar_reporte():
     return "🔒 Acceso restringido. Usa 'exportar reporte' desde WhatsApp.", 403
