@@ -253,7 +253,7 @@ def descargar_reporte():
     return "🔒 Acceso restringido. Usa 'exportar reporte' desde WhatsApp.", 403
 
 # === INICIO DEL SERVIDOR ===
-if __name __ == "__main__":
+if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     print(f"🌍 Servidor iniciando en http://0.0.0.0:{port}")
     app.run(host="0.0.0.0", port=port)
