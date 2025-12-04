@@ -8,6 +8,7 @@ import sys
 import traceback
 import datetime
 import psycopg2
+import re
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 
@@ -62,32 +63,76 @@ def webhook():
     print("📤 [WEBHOOK] Enviando respuesta a Twilio")
     return str(r)
 
-# === RUTA: ACTIVAR FINCA CON EMPLEADOS (uso administrador) ===
+# === RUTA: FORMULARIO AMIGABLE PARA ACTIVAR FINCA (uso administrador) ===
+@app.route("/activar")
+def formulario_activacion():
+    return '''
+    <html>
+    <head><title>Activar Finca - Finca Digital</title></head>
+    <body style="font-family: Arial; max-width: 600px; margin: 40px auto; padding: 20px; border: 1px solid #ccc; border-radius: 8px; background: #f9f9f9;">
+        <h2 style="color: #28a745;">✅ Activar Finca con Empleados</h2>
+        <form action="/activar-finca-con-empleados" method="GET">
+            <p>
+                <label><strong>Nombre de la finca:</strong></label><br>
+                <input type="text" name="nombre" placeholder="Ej: Hacienda El Frayle" style="width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #ccc; border-radius: 4px;" required>
+            </p>
+            <p>
+                <label><strong>Número del dueño (10 dígitos):</strong></label><br>
+                <input type="text" name="telefono_dueno" placeholder="3143539351" style="width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #ccc; border-radius: 4px;" required>
+                <br><small style="color: #666;">Ej: 3143539351 (sin espacios ni +57)</small>
+            </p>
+            <p>
+                <label><strong>Números de empleados (máx. 3, separados por comas):</strong></label><br>
+                <input type="text" name="empleados" placeholder="3101234567,3119876543" style="width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #ccc; border-radius: 4px;">
+                <br><small style="color: #666;">Ej: 3101234567,3119876543</small>
+            </p>
+            <button type="submit" style="background: #28a745; color: white; padding: 12px 24px; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; margin-top: 10px;">
+                ✅ Activar Finca
+            </button>
+        </form>
+        <br>
+        <small style="color: #888;">🔒 Solo para uso del administrador. Los números se convertirán automáticamente a formato WhatsApp.</small>
+    </body>
+    </html>
+    '''
+
+# === RUTA: ACTIVAR FINCA CON EMPLEADOS (versión mejorada) ===
 @app.route("/activar-finca-con-empleados")
 def activar_finca_con_empleados():
-    nombre_finca = request.args.get("nombre")
-    telefono_dueno = request.args.get("telefono_dueno")
-    empleados = request.args.get("empleados", "").strip()
+    nombre_finca = request.args.get("nombre", "").strip()
+    telefono_dueno = request.args.get("telefono_dueno", "").strip()
+    empleados_raw = request.args.get("empleados", "").strip()
     
     if not nombre_finca or not telefono_dueno:
-        return (
-            "❌ Faltan datos.\n"
-            "Usa: ?nombre=MiFinca&telefono_dueno=whatsapp:+57314...&empleados=whatsapp:+57310...,whatsapp:+57311..."
-        ), 400
+        return "❌ Faltan datos: nombre y número del dueño son obligatorios.", 400
 
-    # Procesar lista de empleados
+    # Función para limpiar y validar un número colombiano
+    def formatear_numero(num):
+        # Eliminar todo excepto dígitos
+        solo_digitos = re.sub(r'\D', '', num)
+        if len(solo_digitos) == 10 and solo_digitos.startswith('3'):
+            return f"whatsapp:+57{solo_digitos}"
+        return None
+
+    # Procesar dueño
+    dueno_formateado = formatear_numero(telefono_dueno)
+    if not dueno_formateado:
+        return f"❌ Número de dueño inválido: {telefono_dueno}. Debe ser 10 dígitos y empezar con 3.", 400
+
+    # Procesar empleados
     lista_empleados = []
-    if empleados:
-        lista_empleados = [tel.strip() for tel in empleados.split(",") if tel.strip()]
+    if empleados_raw:
+        for num in empleados_raw.split(","):
+            num = num.strip()
+            if num:
+                emp_formateado = formatear_numero(num)
+                if emp_formateado:
+                    lista_empleados.append(emp_formateado)
+                else:
+                    return f"❌ Número de empleado inválido: {num}. Usa 10 dígitos (ej: 3101234567).", 400
     
     if len(lista_empleados) > 3:
-        return "❌ Máximo 3 empleados permitidos por finca.", 400
-
-    # Validar formato de números
-    all_numbers = [telefono_dueno] + lista_empleados
-    for num in all_numbers:
-        if not num.startswith("whatsapp:+57") or len(num) < 15:
-            return f"❌ Número inválido: {num}. Usa formato: whatsapp:+573143539351", 400
+        return "❌ Máximo 3 empleados permitidos.", 400
 
     try:
         database_url = os.environ.get("DATABASE_URL")
@@ -96,16 +141,15 @@ def activar_finca_con_empleados():
 
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cur:
-                # Crear finca
+                # Crear o actualizar finca
                 cur.execute("""
                     INSERT INTO fincas (nombre, telefono_dueño, suscripcion_activa, vencimiento_suscripcion)
                     VALUES (%s, %s, %s, CURRENT_DATE + INTERVAL '30 days')
                     ON CONFLICT (nombre) DO UPDATE 
                     SET telefono_dueño = EXCLUDED.telefono_dueño,
-                        suscripcion_activa = EXCLUDED.suscripcion_activa,
-                        vencimiento_suscripcion = EXCLUDED.vencimiento_suscripcion
+                        suscripcion_activa = EXCLUDED.suscripcion_activa
                     RETURNING id
-                """, (nombre_finca, telefono_dueno, True))
+                """, (nombre_finca, dueno_formateado, True))
                 finca_id = cur.fetchone()[0]
 
                 # Registrar dueño
@@ -114,7 +158,7 @@ def activar_finca_con_empleados():
                     VALUES (%s, %s, 'dueño', %s)
                     ON CONFLICT (telefono_whatsapp) DO UPDATE 
                     SET finca_id = EXCLUDED.finca_id
-                """, (telefono_dueno, "Dueño", finca_id))
+                """, (dueno_formateado, "Dueño", finca_id))
 
                 # Registrar empleados
                 for emp in lista_empleados:
@@ -129,14 +173,14 @@ def activar_finca_con_empleados():
         
         empleados_txt = ", ".join(lista_empleados) if lista_empleados else "ninguno"
         return (
-            f"✅ Finca '{nombre_finca}' activada con éxito.\n"
-            f"• Dueño: {telefono_dueno}\n"
-            f"• Empleados ({len(lista_empleados)}): {empleados_txt}\n"
+            f"✅ Finca '{nombre_finca}' activada con éxito.<br>"
+            f"• Dueño: {dueno_formateado}<br>"
+            f"• Empleados ({len(lista_empleados)}): {empleados_txt}<br>"
             f"• Válida hasta: {datetime.date.today() + datetime.timedelta(days=30)}"
         ), 200
 
     except Exception as e:
-        return f"❌ Error al activar finca con empleados: {e}", 500
+        return f"❌ Error al activar: {e}", 500
 
 # === RUTA: CONSULTAR MI FINCA_ID (para dueños) ===
 @app.route("/mi-finca-id")
@@ -160,8 +204,8 @@ def mi_finca_id():
                 row = cur.fetchone()
                 if row:
                     return (
-                        f"📱 Tu finca: **{row[1]}**\n"
-                        f"🆔 ID: **{row[0]}**\n\n"
+                        f"📱 Tu finca: <strong>{row[1]}</strong><br>"
+                        f"🆔 ID: <strong>{row[0]}</strong><br><br>"
                         "Envía este ID junto con tu comprobante de pago."
                     ), 200
                 else:
@@ -209,7 +253,7 @@ def descargar_reporte():
     return "🔒 Acceso restringido. Usa 'exportar reporte' desde WhatsApp.", 403
 
 # === INICIO DEL SERVIDOR ===
-if __name__ == "__main__":
+if __name __ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     print(f"🌍 Servidor iniciando en http://0.0.0.0:{port}")
     app.run(host="0.0.0.0", port=port)
