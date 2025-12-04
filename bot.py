@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 bot.py - Sistema de Registro Conversacional Multi-Finca
-Versión FINAL COMERCIAL con reporte financiero optimizado
+Versión FINAL LIMPIA: sinónimos eliminados, solo menú estructurado + extracción de animales
 """
 
 import os
@@ -10,7 +10,7 @@ import re
 import datetime
 from urllib.parse import urlparse
 
-print("🔧 Iniciando bot.py (versión comercial con reporte mejorado)...")
+print("🔧 Iniciando bot.py (versión limpia sin sinónimos)...")
 
 # === 1. CONEXIÓN A POSTGRESQL CON MIGRACIÓN AUTOMÁTICA ===
 def inicializar_bd():
@@ -119,55 +119,11 @@ except Exception as e:
     print(f"❌ Error crítico al inicializar BD: {e}")
     BD_OK = False
 
-# === 2. SINÓNIMOS MEJORADOS (sin solapamiento) ===
-SINONIMOS = {
-    "siembra": [
-        "sembrar", "siembra", "plantar", "resiembra", "resembrar",
-        "resembramos", "sembramos", "plantamos"
-    ],
-    "produccion": [
-        # Cultivos
-        "cosechar", "cosecha", "recolectar", "cortar", "descacotar",
-        "cosechamos", "recolectamos", "produccion", "producción",
-        "maíz", "papa", "arroz", "cacao", "café", "yuca", "plátano", "frijol", "trigo", "cebolla",
-        # Productos animales (no animales vivos)
-        "leche", "carne", "huevos", "litros", "kilos", "kg",
-        "vendimos producto", "sacamos producto", "salieron producto"
-    ],
-    "sanidad_animal": [
-        "vacunar", "vacuna", "inyectar", "desparasitar", "purgar",
-        "medicar", "tratamiento", "sanidad", "chequeo",
-        "aftosa", "brucelosis", "desparasitamos", "vermífugo",
-        "vacunamos", "inyectamos", "pastilla", "bolo", "curacion", "cirugia"
-    ],
-    "ingreso_animal": [
-        # Nacimientos
-        "nacer", "nació", "nacieron", "nacimiento", "parto",
-        # Compras EXPLÍCITAS de animales
-        "comprar animal", "compra de animal", "compramos animales", "compramos un animal",
-        "llegó animal", "adquirimos animal", "nuevo animal", "ingreso de animal",
-        # Tipos de animales
-        "lechón", "cerda", "verraco", "ceba", "toro", "ternero", "ternera", "novillo", "vaquilla"
-    ],
-    "salida_animal": [
-        "vender", "vendimos", "venta de", "se murieron", "muertes",
-        "baja", "sacrificio", "fallecieron", "perdimos", "salida de",
-        "muerto", "vendido"
-    ],
-    "gasto": [
-        # Compras GENÉRICAS (insumos, medicinas, etc.)
-        "gastar", "gasto", "pagar", "comprar", "compra",
-        "compramos", "compra de", "factura", "costo", "inversión", "egreso",
-        # Refuerzo
-        "medicina", "alimento", "concentrado", "vacuna", "jornal", "herramienta", "repuesto"
-    ],
-    "labor": [
-        "limpiar", "fumigar", "rociar", "castrar", "podar", "abonar",
-        "reparar", "alimentar", "dar comida", "echamos comida",
-        "lavar", "destetar", "marcar", "marcaje", "cerca", "cercar",
-        "trabajar en", "hicimos labor", "actividad en", "alimentación"
-    ]
-}
+# === 2. PALABRAS CLAVE PARA ANIMALES (NO SINÓNIMOS DE ACTIVIDAD) ===
+# Solo usadas en extraer_datos_animal
+PORCINO_PALABRAS = ["cerdo", "lechón", "cerda", "verraco", "ceba", "chancho", "cochino"]
+BOVINO_PALABRAS = ["vaca", "toro", "ternero", "ternera", "novillo", "vaquilla", "buey", "ganado"]
+CATEGORIAS_VALIDAS = ["lechón", "cerda", "verraco", "ceba", "toro", "ternero", "ternera", "novillo", "vaquilla", "engorda", "lechera"]
 
 # === 3. ESTADO DEL USUARIO ===
 user_state = {}
@@ -244,25 +200,14 @@ def registrar_nueva_finca(nombre_finca, remitente):
         error_msg = str(e)
         return f"❌ ERROR: {error_msg[:120]}"
 
-def detectar_actividad(mensaje):
-    mensaje = mensaje.lower()
-    for actividad, palabras in SINONIMOS.items():
-        for palabra in palabras:
-            if palabra in mensaje:
-                return actividad
-    return "general"
-
 def extraer_datos_animal(mensaje):
     datos = {"especie": None, "id_externo": None, "marca_o_arete": None, "categoria": None, "corral": None, "peso": None}
     mensaje = mensaje.lower()
 
     # Detección de especie
-    porcino_palabras = ["cerdo", "lechón", "cerda", "verraco", "ceba", "chancho", "cochino"]
-    bovino_palabras = ["vaca", "toro", "ternero", "ternera", "novillo", "vaquilla", "buey", "ganado"]
-    
-    if any(p in mensaje for p in porcino_palabras):
+    if any(p in mensaje for p in PORCINO_PALABRAS):
         datos["especie"] = "porcino"
-    elif any(p in mensaje for p in bovino_palabras):
+    elif any(p in mensaje for p in BOVINO_PALABRAS):
         datos["especie"] = "bovino"
 
     # Extracción de marca o arete
@@ -280,8 +225,7 @@ def extraer_datos_animal(mensaje):
         datos["id_externo"] = f"{prefijo}{cod}"
 
     # Categoría
-    categorias_validas = ["lechón", "cerda", "verraco", "ceba", "toro", "ternero", "ternera", "novillo", "vaquilla", "engorda", "lechera"]
-    for cat in categorias_validas:
+    for cat in CATEGORIAS_VALIDAS:
         if cat in mensaje:
             datos["categoria"] = cat
             break
@@ -519,7 +463,7 @@ def consultar_estado_animal(arete):
     except Exception as e:
         return "❌ Error al consultar el animal. Inténtalo más tarde."
 
-# === 5. FLUJO CONVERSACIONAL COMPLETO ===
+# === 5. FLUJO CONVERSACIONAL COMPLETO (SIN SINÓNIMOS) ===
 def iniciar_flujo_conversacional_existente(mensaje, user_key, state):
     msg = mensaje.strip().lower()
 
@@ -565,16 +509,7 @@ def iniciar_flujo_conversacional_existente(mensaje, user_key, state):
             return "🛠️ ¿Qué labor hiciste? (Ej: alimentación, limpieza)"
 
         else:
-            tipo_detectado = detectar_actividad(mensaje)
-            if tipo_detectado in SINONIMOS:
-                state["data"]["tipo"] = tipo_detectado
-                if tipo_detectado in ["ingreso_animal", "salida_animal"]:
-                    state["step"] = "waiting_for_subtipo"
-                    return "❓ ¿Nacimiento/compra o venta/muerte?"
-                else:
-                    state["step"] = "waiting_for_detalle"
-                    return f"✅ Entendí: {tipo_detectado}. ¿Qué detalle quieres registrar?"
-
+            # NO se intenta detectar actividad → se pide usar el menú
             return (
                 "🌿 Elige una opción:\n"
                 "1. 🌱 Siembra\n"
@@ -744,7 +679,7 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
 
     return respuesta
 
-# === 6. ENTRADA PRINCIPAL: MENÚ OBLIGATORIO ===
+# === 6. ENTRADA PRINCIPAL: VALIDACIÓN DE VENCIMIENTO AUTOMÁTICO ===
 def procesar_mensaje_whatsapp(mensaje, remitente=None):
     print(f"🔍 [BOT] Procesando mensaje: '{mensaje}' de {remitente}")
     if not remitente:
@@ -779,16 +714,20 @@ def procesar_mensaje_whatsapp(mensaje, remitente=None):
                 "Escribe '8' para comenzar."
             )
 
-    if not usuario_info["suscripcion_activa"]:
+    # === VALIDACIÓN AUTOMÁTICA DE VENCIMIENTO ===
+    hoy = datetime.date.today()
+    vencimiento = usuario_info.get("vencimiento_suscripcion")
+    suscripcion_activa = usuario_info["suscripcion_activa"]
+
+    if not suscripcion_activa or (vencimiento and hoy > vencimiento):
         return (
-            "🔒 Tu suscripción ha expirado o aún no se ha activado.\n\n"
-            "💳 **Para activarla, debes suscribirte mensualmente.**\n"
-            "**Valor:** $25.000 COP/mes\n"
+            "🔒 Tu suscripción ha expirado.\n\n"
+            "💳 **Renovación mensual:** $25.000 COP\n"
             "**Nequi:** 314 353 9351 (Omar Pachón)\n"
-            "Envía el comprobante para que active tu finca."
+            "Envía comprobante para reactivar tu finca."
         )
 
-    # Usuario existente y activo: procesar mensaje en su contexto
+    # Usuario activo y dentro del período
     if mensaje.lower().startswith("estado animal "):
         arete = mensaje.split(" ", 2)[2].strip().upper()
         return consultar_estado_animal(arete)
