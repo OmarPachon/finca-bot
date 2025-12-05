@@ -183,7 +183,7 @@ def registrar_nueva_finca(nombre_finca, remitente):
         return (
             f"🏡 ¡Finca '{nombre_finca}' registrada!\n\n"
             "💳 **Para activarla, debes suscribirte mensualmente.**\n\n"
-            "**Valor:** $25.000 COP/mes\n"
+            "**Valor:** $50.000 COP/mes\n"
             "**Incluye:** Tu número (como dueño) + hasta 3 empleados para registrar labores.\n"
             "**Nequi:** 314 353 9351 (Omar Pachón)\n\n"
             "📲 **Al realizar el pago, envía el comprobante y los números de tus empleados:**\n"
