@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 bot.py - Sistema de Registro Conversacional Multi-Finca
-Versión FINAL LIMPIA: sinónimos eliminados, solo menú estructurado + extracción de animales
+Versión FINAL COMERCIAL con soporte para marcas no consecutivas e inventario inicial
 """
 
 import os
@@ -10,7 +10,7 @@ import re
 import datetime
 from urllib.parse import urlparse
 
-print("🔧 Iniciando bot.py (versión limpia sin sinónimos)...")
+print("🔧 Iniciando bot.py (versión final con marcas múltiples)...")
 
 # === 1. CONEXIÓN A POSTGRESQL CON MIGRACIÓN AUTOMÁTICA ===
 def inicializar_bd():
@@ -119,11 +119,10 @@ except Exception as e:
     print(f"❌ Error crítico al inicializar BD: {e}")
     BD_OK = False
 
-# === 2. PALABRAS CLAVE PARA ANIMALES (NO SINÓNIMOS DE ACTIVIDAD) ===
-# Solo usadas en extraer_datos_animal
+# === 2. PALABRAS CLAVE PARA ANIMALES ===
 PORCINO_PALABRAS = ["cerdo", "lechón", "cerda", "verraco", "ceba", "chancho", "cochino"]
-BOVINO_PALABRAS = ["vaca", "toro", "ternero", "ternera", "novillo","novilla", "vaquilla", "buey", "ganado"]
-CATEGORIAS_VALIDAS = ["lechón", "cerda", "verraco", "ceba", "toro", "ternero", "ternera", "novillo","novilla" "vaquilla", "engorda", "lechera"]
+BOVINO_PALABRAS = ["vaca", "toro", "ternero", "ternera", "novillo", "vaquilla", "buey", "ganado"]
+CATEGORIAS_VALIDAS = ["lechón", "cerda", "verraco", "ceba", "toro", "ternero", "ternera", "novillo", "vaquilla", "engorda", "lechera"]
 
 # === 3. ESTADO DEL USUARIO ===
 user_state = {}
@@ -185,18 +184,15 @@ def registrar_nueva_finca(nombre_finca, remitente):
             f"🏡 ¡Finca '{nombre_finca}' registrada!\n\n"
             "💳 **Para activarla, debes suscribirte mensualmente.**\n\n"
             "**Valor:** $25.000 COP/mes\n"
+            "**Incluye:** Tu número (como dueño) + hasta 3 empleados para registrar labores.\n"
             "**Nequi:** 314 353 9351 (Omar Pachón)\n\n"
-            "**Incluye:** Tu número + hasta 3 empleados para registrar labores.\n"
-            "1️⃣ Realiza el pago a este número.\n"
-            "2️⃣ Envía el comprobante (pantallazo del recibo Nequi).\n"
-            "- Los números de WhatsApp de tus empleados (máx. 3)\n"
-            "- Ejemplo:\n"
+            "📲 **Al realizar el pago, envía el comprobante y los números de tus empleados:**\n"
+            "- Máximo 3 números de WhatsApp\n"
+            "- *(Tu número ya está registrado como dueño — no lo incluyas)*\n"
+            "- Formato correcto:\n"
             "  • whatsapp:+573101234567\n"
-            "  • whatsapp:+573119876543\n"
-            "  • whatsapp:+573128765432\n\n"
-            "3️⃣ Yo activaré tu finca manualmente en menos de 1 hora.\n\n"
-            "⏳ Mientras tanto, no podrás registrar actividades.\n"
-            "🔐 *Tu finca está creada, pero desactivada hasta que confirme el pago.*"
+            "  • whatsapp:+573119876543\n\n"
+            "✅ Yo activaré a todos en menos de 1 hora."
         )
     except psycopg2.IntegrityError as e:
         if "unique" in str(e).lower() and "nombre" in str(e).lower():
@@ -210,13 +206,11 @@ def extraer_datos_animal(mensaje):
     datos = {"especie": None, "id_externo": None, "marca_o_arete": None, "categoria": None, "corral": None, "peso": None}
     mensaje = mensaje.lower()
 
-    # Detección de especie
     if any(p in mensaje for p in PORCINO_PALABRAS):
         datos["especie"] = "porcino"
     elif any(p in mensaje for p in BOVINO_PALABRAS):
         datos["especie"] = "bovino"
 
-    # Extracción de marca o arete
     arete = re.search(r"(?:arete|chapeta)\s+(\d+)", mensaje)
     if arete:
         num = arete.group(1)
@@ -230,17 +224,14 @@ def extraer_datos_animal(mensaje):
         prefijo = "C-" if datos["especie"] == "porcino" else "V-M-"
         datos["id_externo"] = f"{prefijo}{cod}"
 
-    # Categoría
     for cat in CATEGORIAS_VALIDAS:
         if cat in mensaje:
             datos["categoria"] = cat
             break
 
-    # Corral
     corral = re.search(r"(?:corral|lugar)\s+([a-z0-9]+)", mensaje, re.IGNORECASE)
     if corral: datos["corral"] = corral.group(1).upper()
 
-    # Peso
     peso = re.search(r"peso\s*(\d+(?:\.\d+)?)\s*(kg|kilo|kilos)", mensaje)
     if peso: datos["peso"] = float(peso.group(1))
 
@@ -296,7 +287,6 @@ def generar_reporte(frecuencia="semanal", formato="texto", finca_id=None):
     if formato == "texto":
         lines = [f"📅 REPORTE {frecuencia.upper()}", periodo, ""]
 
-        # === CÁLCULO DE TOTALES ===
         total_ingresos = 0
         total_gastos = 0
         total_jornales_valor = 0
@@ -305,22 +295,18 @@ def generar_reporte(frecuencia="semanal", formato="texto", finca_id=None):
         gastos = [r for r in registros if r[1] == "gasto"]
         actividades_con_jornales = [r for r in registros if r[9] and r[9] > 0]
 
-        # Ingresos por producción vendida
         for row in produccion_total:
-            if row[6] > 0:  # valor > 0 indica venta
+            if row[6] > 0:
                 total_ingresos += row[6]
 
-        # Gastos directos
         for row in gastos:
             if row[6] > 0:
                 total_gastos += row[6]
 
-        # Jornales (ya sea en producción, siembra, etc.)
         for row in actividades_con_jornales:
             if row[6] > 0:
                 total_jornales_valor += row[6]
 
-        # === RESUMEN EJECUTIVO ===
         lines.append("📊 RESUMEN FINANCIERO")
         lines.append(f"• Ingresos: ${total_ingresos:,.0f}")
         lines.append(f"• Gastos: ${total_gastos:,.0f}")
@@ -328,8 +314,6 @@ def generar_reporte(frecuencia="semanal", formato="texto", finca_id=None):
         balance = total_ingresos - total_gastos - total_jornales_valor
         lines.append(f"• Balance estimado: ${balance:,.0f}")
         lines.append("")
-
-        # === DETALLE POR SECCIONES ===
 
         # PRODUCCIÓN
         if produccion_total:
@@ -385,13 +369,13 @@ def generar_reporte(frecuencia="semanal", formato="texto", finca_id=None):
                 lines.append(f"→ **TOTAL GASTOS: ${total_gastos:,.0f}**")
             lines.append("")
 
-        # JORNALES (solo si hay valor asociado)
+        # JORNALES
         if total_jornales_valor > 0:
             lines.append("👷 COSTO TOTAL DE JORNALES")
             lines.append(f"→ **${total_jornales_valor:,.0f}**")
             lines.append("")
 
-        # OTRAS ACTIVIDADES (siembra, labor, sanidad, etc.)
+        # OTRAS ACTIVIDADES
         otras_actividades = [r for r in registros if r[1] not in ["produccion", "gasto"]]
         if otras_actividades:
             lines.append("📝 OTRAS ACTIVIDADES")
@@ -436,7 +420,7 @@ def consultar_estado_animal(arete):
                 cursor.execute("""
                     SELECT especie, estado, peso, corral, fecha_registro, observaciones
                     FROM animales WHERE id_externo = %s OR marca_o_arete = %s
-                """, (arete, arete))
+                """, (arete.strip().upper(), arete.strip().upper()))
                 row = cursor.fetchone()
                 if not row:
                     return f"❌ No encontré ningún animal con marca o arete '{arete}'."
@@ -446,7 +430,7 @@ def consultar_estado_animal(arete):
                 cursor.execute("""
                     SELECT tipo, fecha FROM salud_animal 
                     WHERE id_externo = %s ORDER BY fecha DESC LIMIT 2
-                """, (arete,))
+                """, (arete.strip().upper(),))
                 salud = cursor.fetchall()
                 vacuna = "N/A"
                 despar = "N/A"
@@ -457,7 +441,7 @@ def consultar_estado_animal(arete):
                         despar = f"{fecha}"
 
                 return (
-                    f"🐷 ANIMAL {arete} ({especie})\n"
+                    f"🐷 ANIMAL {arete.strip().upper()} ({especie})\n"
                     f"• Estado: {estado}\n"
                     f"• Peso: {peso or 'No registrado'} kg\n"
                     f"• Corral: {corral or 'No asignado'}\n"
@@ -469,7 +453,7 @@ def consultar_estado_animal(arete):
     except Exception as e:
         return "❌ Error al consultar el animal. Inténtalo más tarde."
 
-# === 5. FLUJO CONVERSACIONAL COMPLETO (SIN SINÓNIMOS) ===
+# === 5. FLUJO CONVERSACIONAL COMPLETO ===
 def iniciar_flujo_conversacional_existente(mensaje, user_key, state):
     msg = mensaje.strip().lower()
 
@@ -494,10 +478,10 @@ def iniciar_flujo_conversacional_existente(mensaje, user_key, state):
             state["step"] = "waiting_for_detalle"
             return "💉 ¿Fue vacuna o desparasitación?"
 
-        elif msg in ["4", "ingreso", "compra", "nacimiento"]:
+        elif msg in ["4", "ingreso", "compra", "nacimiento", "inventario"]:
             state["data"]["tipo"] = "ingreso_animal"
             state["step"] = "waiting_for_subtipo"
-            return "🐷 ¿Es por nacimiento o compra de animales?"
+            return "❓ ¿Es por nacimiento, compra o inventario inicial?"
 
         elif msg in ["5", "salida", "venta", "muerte"]:
             state["data"]["tipo"] = "salida_animal"
@@ -515,7 +499,6 @@ def iniciar_flujo_conversacional_existente(mensaje, user_key, state):
             return "🛠️ ¿Qué labor hiciste? (Ej: alimentación, limpieza)"
 
         else:
-            # NO se intenta detectar actividad → se pide usar el menú
             return (
                 "🌿 Elige una opción:\n"
                 "1. 🌱 Siembra\n"
@@ -539,8 +522,12 @@ def iniciar_flujo_conversacional_existente(mensaje, user_key, state):
                 state["data"]["subtipo"] = "compra"
                 state["step"] = "waiting_for_detalle"
                 return "🐷 ¿Qué animal compraste? (Ej: cerda, toro)"
+            elif "inventario" in msg or "existencia" in msg or "inicial" in msg:
+                state["data"]["subtipo"] = "inventario_inicial"
+                state["step"] = "waiting_for_detalle"
+                return "📦 ¿Qué animales ya tenías en la finca? (Ej: 5 terneras, 3 cerdas)"
             else:
-                return "❓ Por favor, especifica: ¿nacimiento o compra?"
+                return "❓ Por favor, especifica: ¿nacimiento, compra o inventario inicial?"
 
         elif tipo == "salida_animal":
             if "venta" in msg or "vendimos" in msg:
@@ -605,7 +592,7 @@ def iniciar_flujo_conversacional_existente(mensaje, user_key, state):
     elif state["step"] == "waiting_for_lugar":
         state["data"]["lugar"] = mensaje
         state["step"] = "waiting_for_observacion"
-        return "📝 ¿Observación? (Ej: marca 201 a 205)\nEscribe 'fin' para guardar."
+        return "📝 ¿Observación? (Ej: marca D-01, D-03, T105)\nEscribe 'fin' para guardar."
 
     elif state["step"] == "waiting_for_observacion":
         if msg in ["fin", "salir", "listo", "guardar", "0"]:
@@ -646,38 +633,85 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
         finca_id = usuario_info["finca_id"]
         usuario_id = usuario_info["id"]
 
-        if tipo == "ingreso_animal" and subtipo == "nacimiento":
-            datos_animal = extraer_datos_animal(detalle + " " + (observacion or ""))
-            if datos_animal.get("id_externo"):
-                try:
-                    database_url = os.environ.get("DATABASE_URL")
-                    with psycopg2.connect(database_url) as conn:
-                        with conn.cursor() as cursor:
-                            cursor.execute('''
-                                INSERT INTO animales (especie, id_externo, marca_o_arete, categoria, peso, corral, estado, finca_id)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                                ON CONFLICT (id_externo) DO NOTHING
-                            ''', (
-                                datos_animal.get("especie"),
-                                datos_animal.get("id_externo"),
-                                datos_animal.get("marca_o_arete"),
-                                datos_animal.get("categoria"),
-                                datos_animal.get("peso"),
-                                datos_animal.get("corral"),
-                                "activo",
-                                finca_id
-                            ))
-                        conn.commit()
-                except Exception as e:
-                    print(f"❌ Error al registrar animal con finca: {e}")
+        # === MANEJO ESPECIAL DE INGRESO DE ANIMALES ===
+        if tipo == "ingreso_animal":
+            if subtipo in ["nacimiento", "compra", "inventario_inicial"]:
+                # Combinar detalle + observación para extraer marcas
+                texto_completo = f"{detalle} {observacion}".lower()
+                marcas = []
+                
+                # Buscar marcas (soporta: "marca D-01, D-03, T105")
+                if "marca" in texto_completo:
+                    try:
+                        parte_marcas = texto_completo.split("marca", 1)[1]
+                        codigos = re.split(r'[,y\s]+', parte_marcas)
+                        for cod in codigos:
+                            match = re.search(r'([a-z0-9-]+)', cod.strip())
+                            if match and match.group(1):
+                                marcas.append(match.group(1).upper())
+                    except Exception as e:
+                        print(f"⚠️ Error al extraer marcas: {e}")
+                
+                # Detectar especie desde el detalle
+                especie = "bovino"
+                if any(p in detalle.lower() for p in ["lechón", "cerda", "verraco", "ceba", "cerdo", "chancho"]):
+                    especie = "porcino"
+                elif any(p in detalle.lower() for p in ["ternero", "ternera", "toro", "vaca", "novillo", "vaquilla"]):
+                    especie = "bovino"
 
-        guardar_registro(
-            tipo, 
-            subtipo if tipo in ["ingreso_animal", "salida_animal"] else tipo,
-            detalle, lugar, cantidad, valor, unidad, observacion, jornales,
-            finca_id=finca_id,
-            usuario_id=usuario_id
-        )
+                # Registrar cada marca como un animal individual
+                for marca in marcas:
+                    try:
+                        prefijo = "C-" if especie == "porcino" else "V-M-"
+                        id_externo = f"{prefijo}{marca}"
+                        
+                        categoria = None
+                        if "lechón" in detalle.lower():
+                            categoria = "lechón"
+                        elif "cerda" in detalle.lower():
+                            categoria = "cerda"
+                        elif "ternera" in detalle.lower():
+                            categoria = "ternera"
+                        elif "ternero" in detalle.lower():
+                            categoria = "ternero"
+
+                        database_url = os.environ.get("DATABASE_URL")
+                        with psycopg2.connect(database_url) as conn:
+                            with conn.cursor() as cursor:
+                                cursor.execute('''
+                                    INSERT INTO animales (especie, id_externo, marca_o_arete, categoria, corral, estado, finca_id)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                                    ON CONFLICT (id_externo) DO NOTHING
+                                ''', (
+                                    especie,
+                                    id_externo,
+                                    marca,
+                                    categoria,
+                                    lugar,
+                                    "activo",
+                                    finca_id
+                                ))
+                            conn.commit()
+                    except Exception as e:
+                        print(f"❌ Error al registrar animal {marca}: {e}")
+
+                # Guardar el evento global en registros (una sola vez)
+                guardar_registro(
+                    tipo, 
+                    subtipo,
+                    detalle, lugar, cantidad, valor, unidad, observacion, jornales,
+                    finca_id=finca_id,
+                    usuario_id=usuario_id
+                )
+
+        else:
+            guardar_registro(
+                tipo, 
+                subtipo if tipo in ["ingreso_animal", "salida_animal"] else tipo,
+                detalle, lugar, cantidad, valor, unidad, observacion, jornales,
+                finca_id=finca_id,
+                usuario_id=usuario_id
+            )
 
         if user_key in user_state:
             del user_state[user_key]
@@ -695,17 +729,14 @@ def procesar_mensaje_whatsapp(mensaje, remitente=None):
     if not mensaje:
         return "❌ Mensaje vacío."
 
-    # Si ya está en proceso de registrar finca (segunda respuesta)
     if remitente in user_state and user_state[remitente].get("esperando_nombre_finca"):
         nombre_finca = mensaje
         del user_state[remitente]
         return registrar_nueva_finca(nombre_finca, remitente)
 
-    # Ver si ya está registrado
     usuario_info = obtener_usuario_por_whatsapp(remitente)
 
     if not usuario_info:
-        # Nuevo usuario: solo puede registrar finca
         if mensaje.lower() in ["8", "finca", "registrar", "hola", "hi", "buenos días", "buenas", "menu", "ayuda"]:
             user_state[remitente] = {"esperando_nombre_finca": True}
             return (
@@ -720,7 +751,7 @@ def procesar_mensaje_whatsapp(mensaje, remitente=None):
                 "Escribe '8' para comenzar."
             )
 
-    # === VALIDACIÓN AUTOMÁTICA DE VENCIMIENTO ===
+    # Validación de vencimiento
     hoy = datetime.date.today()
     vencimiento = usuario_info.get("vencimiento_suscripcion")
     suscripcion_activa = usuario_info["suscripcion_activa"]
@@ -733,9 +764,9 @@ def procesar_mensaje_whatsapp(mensaje, remitente=None):
             "Envía comprobante para reactivar tu finca."
         )
 
-    # Usuario activo y dentro del período
+    # Procesar mensajes del usuario
     if mensaje.lower().startswith("estado animal "):
-        arete = mensaje.split(" ", 2)[2].strip().upper()
+        arete = mensaje.split(" ", 2)[2].strip()
         return consultar_estado_animal(arete)
 
     if "reporte" in mensaje.lower():
