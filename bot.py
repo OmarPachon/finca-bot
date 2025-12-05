@@ -802,7 +802,7 @@ def procesar_mensaje_whatsapp(mensaje, remitente=None):
     if not suscripcion_activa or (vencimiento and hoy > vencimiento):
         return (
             "🔒 Tu suscripción ha expirado.\n\n"
-            "💳 **Renovación mensual:** $25.000 COP\n"
+            "💳 **Renovación mensual:** $50.000 COP\n"
             "**Nequi:** 314 353 9351 (Omar Pachón)\n"
             "Envía comprobante para reactivar tu finca."
         )
