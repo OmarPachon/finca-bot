@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 bot.py - Sistema de Registro Conversacional Multi-Finca
-Versión FINAL COMERCIAL con historial de sanidad y actualización de peso
+Versión FINAL COMERCIAL con historial de sanidad FUNCIONAL y actualización de peso
 """
 
 import os
@@ -10,7 +10,7 @@ import re
 import datetime
 from urllib.parse import urlparse
 
-print("🔧 Iniciando bot.py (versión final con sanidad completa y peso dinámico)...")
+print("🔧 Iniciando bot.py (versión con sanidad completa y peso dinámico)...")
 
 # === 1. CONEXIÓN A POSTGRESQL CON MIGRACIÓN AUTOMÁTICA ===
 def inicializar_bd():
@@ -259,6 +259,26 @@ def actualizar_peso_animal(marca_o_arete, nuevo_peso, finca_id):
             conn.commit()
     except Exception as e:
         print(f"❌ Error al actualizar peso: {e}")
+
+# === NUEVA FUNCIÓN: GUARDAR EN SALUD_ANIMAL ===
+def guardar_en_salud_animal(id_externo, tipo, tratamiento, observacion, finca_id):
+    """Guarda un registro de sanidad en la tabla salud_animal."""
+    try:
+        database_url = os.environ.get("DATABASE_URL")
+        if not database_url:
+            return
+
+        fecha = datetime.date.today().isoformat()
+        with psycopg2.connect(database_url) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute('''
+                    INSERT INTO salud_animal (id_externo, tipo, tratamiento, fecha, observacion, finca_id)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                ''', (id_externo, tipo, tratamiento, fecha, observacion, finca_id))
+            conn.commit()
+        print(f"✅ Sanidad guardada para {id_externo}")
+    except Exception as e:
+        print(f"❌ Error al guardar en salud_animal: {e}")
 
 def guardar_registro(tipo_actividad, accion, detalle, lugar=None, cantidad=None, valor=0, unidad=None, observacion=None, jornales=None, finca_id=None, usuario_id=None, mensaje_completo=None):
     print(f"🔍 GUARDANDO REGISTRO en finca {finca_id}: {tipo_actividad} | {detalle}")
@@ -747,6 +767,40 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
                     mensaje_completo=mensaje_completo
                 )
 
+        # === MANEJO ESPECIAL DE SANIDAD ANIMAL ===
+        elif tipo == "sanidad_animal":
+            # Guardar en registros (como siempre)
+            guardar_registro(
+                tipo, tipo,
+                detalle, lugar, cantidad, valor, unidad, observacion, jornales,
+                finca_id=finca_id,
+                usuario_id=usuario_id,
+                mensaje_completo=mensaje_completo
+            )
+            
+            # EXTRA: guardar en salud_animal
+            texto = mensaje_completo.lower()
+            marca_match = re.search(r"(?:marca|arete|chapeta)\s+([a-z0-9-]+)", texto, re.IGNORECASE)
+            if marca_match:
+                marca_o_arete = marca_match.group(1).upper()
+                # Buscar id_externo
+                try:
+                    database_url = os.environ.get("DATABASE_URL")
+                    with psycopg2.connect(database_url) as conn:
+                        with conn.cursor() as cursor:
+                            cursor.execute("""
+                                SELECT id_externo FROM animales 
+                                WHERE (marca_o_arete = %s OR id_externo LIKE %s) 
+                                AND finca_id = %s
+                            """, (marca_o_arete, f"%{marca_o_arete}", finca_id))
+                            row = cursor.fetchone()
+                            if row:
+                                id_externo = row[0]
+                                # Determinar tipo de sanidad
+                                tipo_sanidad = "vacuna" if any(kw in detalle.lower() for kw in ["vacuna", "aftosa", "brucelosis"]) else "desparasitación"
+                                guardar_en_salud_animal(id_externo, tipo_sanidad, detalle, observacion, finca_id)
+                except Exception as e:
+                    print(f"❌ Error al registrar en salud_animal: {e}")
         else:
             guardar_registro(
                 tipo, 
