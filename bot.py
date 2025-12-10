@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 bot.py - Sistema de Registro Conversacional Multi-Finca
-Versión FINAL COMERCIAL con historial de sanidad FUNCIONAL y actualización de peso
+Versión FINAL COMERCIAL con reporte entre fechas (año actual)
 """
 
 import os
@@ -10,7 +10,7 @@ import re
 import datetime
 from urllib.parse import urlparse
 
-print("🔧 Iniciando bot.py (versión con sanidad completa y peso dinámico)...")
+print("🔧 Iniciando bot.py (versión con reporte entre fechas)...")
 
 # === 1. CONEXIÓN A POSTGRESQL CON MIGRACIÓN AUTOMÁTICA ===
 def inicializar_bd():
@@ -120,8 +120,8 @@ except Exception as e:
     BD_OK = False
 
 # === 2. PALABRAS CLAVE PARA ANIMALES ===
-PORCINO_PALABRAS = ["cerdo", "lechón", "cerda", "verraco", "ceba", "chancho", "cochino"]
-BOVINO_PALABRAS = ["vaca", "toro", "ternero", "ternera", "novillo", "vaquilla", "buey", "ganado"]
+PORCINO_PALABRAS = ["cerdo", "lechón", "cerda", "verraco", "lechon", "lechones", "cochino"]
+BOVINO_PALABRAS = ["vaca", "toro", "ternero", "ternera", "novillo", "novilla", "buey", "ganado"]
 CATEGORIAS_VALIDAS = ["lechón", "cerda", "verraco", "ceba", "toro", "ternero", "ternera", "novillo", "vaquilla", "engorda", "lechera"]
 
 # === 3. ESTADO DEL USUARIO ===
@@ -451,6 +451,143 @@ def generar_reporte(frecuencia="semanal", formato="texto", finca_id=None):
 
     return registros
 
+# === NUEVA FUNCIÓN: REPORTE PERSONALIZADO (AÑO ACTUAL) ===
+def generar_reporte_personalizado(fecha_inicio, fecha_fin, finca_id=None):
+    if finca_id is None:
+        return "❌ No se puede generar reporte sin finca."
+
+    try:
+        database_url = os.environ.get("DATABASE_URL")
+        with psycopg2.connect(database_url) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT fecha, tipo_actividad, accion, detalle, lugar, cantidad, valor, unidad, observacion, jornales
+                    FROM registros 
+                    WHERE fecha BETWEEN %s AND %s AND finca_id = %s 
+                    ORDER BY fecha
+                """, (fecha_inicio.isoformat(), fecha_fin.isoformat(), finca_id))
+                registros = cursor.fetchall()
+        print(f"📊 Reporte personalizado: {len(registros)} registros del {fecha_inicio} al {fecha_fin}")
+    except Exception as e:
+        return f"❌ Error al leer la base de datos: {e}"
+
+    if not registros:
+        return f"⚠️ No hay actividades registradas del {fecha_inicio.strftime('%d/%m')} al {fecha_fin.strftime('%d/%m')}."
+
+    lines = [
+        f"📅 REPORTE PERSONALIZADO",
+        f"Del {fecha_inicio.strftime('%d/%m')} al {fecha_fin.strftime('%d/%m')}",
+        ""
+    ]
+
+    total_ingresos = 0
+    total_gastos = 0
+    total_jornales_valor = 0
+
+    produccion_total = [r for r in registros if r[1] == "produccion"]
+    gastos = [r for r in registros if r[1] == "gasto"]
+    actividades_con_jornales = [r for r in registros if r[9] and r[9] > 0]
+
+    for row in produccion_total:
+        if row[6] > 0:
+            total_ingresos += row[6]
+
+    for row in gastos:
+        if row[6] > 0:
+            total_gastos += row[6]
+
+    for row in actividades_con_jornales:
+        if row[6] > 0:
+            total_jornales_valor += row[6]
+
+    lines.append("📊 RESUMEN FINANCIERO")
+    lines.append(f"• Ingresos: ${total_ingresos:,.0f}")
+    lines.append(f"• Gastos: ${total_gastos:,.0f}")
+    lines.append(f"• Jornales: ${total_jornales_valor:,.0f}")
+    balance = total_ingresos - total_gastos - total_jornales_valor
+    lines.append(f"• Balance estimado: ${balance:,.0f}")
+    lines.append("")
+
+    # PRODUCCIÓN
+    if produccion_total:
+        vegetal = []
+        animal = []
+        cultivos = {"maíz", "papa", "arroz", "cacao", "café", "yuca", "plátano", "frijol", "trigo", "cebolla"}
+        for row in produccion_total:
+            detalle = (row[3] or "").lower()
+            if any(cultivo in detalle for cultivo in cultivos):
+                vegetal.append(row)
+            else:
+                animal.append(row)
+
+        if vegetal:
+            lines.append("🌽 PRODUCCIÓN VEGETAL")
+            for row in vegetal:
+                desc = f"• {row[5]} {row[7]} de {row[3]}"
+                if row[4]: desc += f" del {row[4]}"
+                if row[6] > 0: desc += f" → Venta: ${row[6]:,.0f}"
+                if row[8]: desc += f". Obs: {row[8]}"
+                lines.append(desc)
+            lines.append("")
+
+        if animal:
+            lines.append("🥛🥩 PRODUCCIÓN ANIMAL")
+            for row in animal:
+                if not row[3]: continue
+                desc = f"• {row[5]} {row[7]} de {row[3]}"
+                if row[4]: desc += f" del {row[4]}"
+                if row[6] > 0: desc += f" → Venta: ${row[6]:,.0f}"
+                if row[8]: desc += f". Obs: {row[8]}"
+                lines.append(desc)
+            lines.append("")
+
+    # GASTOS
+    if gastos:
+        lines.append("💰 GASTOS")
+        for row in gastos:
+            cantidad = row[5] if row[5] is not None else ""
+            unidad = row[7] or ""
+            valor = row[6] if row[6] > 0 else 0
+            desc = f"• {row[3] or 'Gasto'}"
+            if cantidad and unidad:
+                desc += f" ({cantidad} {unidad})"
+            elif cantidad:
+                desc += f" ({cantidad})"
+            if valor > 0:
+                desc += f" → ${valor:,.0f}"
+            if row[8]:
+                desc += f". Obs: {row[8]}"
+            lines.append(desc)
+        if total_gastos > 0:
+            lines.append(f"→ **TOTAL GASTOS: ${total_gastos:,.0f}**")
+        lines.append("")
+
+    # JORNALES
+    if total_jornales_valor > 0:
+        lines.append("👷 COSTO TOTAL DE JORNALES")
+        lines.append(f"→ **${total_jornales_valor:,.0f}**")
+        lines.append("")
+
+    # OTRAS ACTIVIDADES
+    otras_actividades = [r for r in registros if r[1] not in ["produccion", "gasto"]]
+    if otras_actividades:
+        lines.append("📝 OTRAS ACTIVIDADES")
+        for row in otras_actividades:
+            tipo = row[1].replace("_", " ").title()
+            desc = f"• {tipo}: {row[3] or 'actividad'}"
+            if row[4]: desc += f" en {row[4]}"
+            if row[5] and row[7]:
+                desc += f" ({row[5]} {row[7]})"
+            if row[9]:
+                desc += f" ({row[9]} jornales)"
+            if row[8]:
+                desc += f". Obs: {row[8]}"
+            lines.append(desc)
+        lines.append("")
+
+    lines.append("✅ Todo bajo control. ¡Buen trabajo!")
+    return "\n".join(lines)
+
 def vaciar_tablas():
     try:
         database_url = os.environ.get("DATABASE_URL")
@@ -536,7 +673,7 @@ def iniciar_flujo_conversacional_existente(mensaje, user_key, state):
         elif msg in ["2", "produccion", "cosecha", "leche", "carne"]:
             state["data"]["tipo"] = "produccion"
             state["step"] = "waiting_for_detalle"
-            return "🌾 ¿Qué produjiste o cosechaste? (Ej: papa, leche)"
+            return "🌾 ¿Qué produjiste o cosechaste? (Ej: cacao, cafe, leche, huevos)"
 
         elif msg in ["3", "sanidad", "vacuna", "desparasitar"]:
             state["data"]["tipo"] = "sanidad_animal"
@@ -558,10 +695,10 @@ def iniciar_flujo_conversacional_existente(mensaje, user_key, state):
             state["step"] = "waiting_for_detalle"
             return "💰 ¿Qué gastaste? (Ej: medicina, jornales)"
 
-        elif msg in ["7", "labor", "limpiar", "alimentar"]:
+        elif msg in ["7", "labor", "macaneo", "abono","cerca"]:
             state["data"]["tipo"] = "labor"
             state["step"] = "waiting_for_detalle"
-            return "🛠️ ¿Qué labor hiciste? (Ej: alimentación, limpieza)"
+            return "🛠️ ¿Qué labor hiciste? (Ej: macaneo, abono, corte, reparacion)"
 
         else:
             return (
@@ -582,11 +719,11 @@ def iniciar_flujo_conversacional_existente(mensaje, user_key, state):
             if "nac" in msg or "parto" in msg:
                 state["data"]["subtipo"] = "nacimiento"
                 state["step"] = "waiting_for_detalle"
-                return "🐷 ¿Qué tipo de animal nació? (Ej: lechón, ternera)"
+                return "🐷 ¿Qué tipo de animal nació? (Ej: lechón, ternera, ternero)"
             elif "compra" in msg or "compramos" in msg:
                 state["data"]["subtipo"] = "compra"
                 state["step"] = "waiting_for_detalle"
-                return "🐷 ¿Qué animal compraste? (Ej: cerda, toro)"
+                return "🐷 ¿Qué animal compraste? (Ej: vaca, ternero, cerdo, cerda, toro)"
             elif "inventario" in msg or "existencia" in msg or "inicial" in msg:
                 state["data"]["subtipo"] = "inventario_inicial"
                 state["step"] = "waiting_for_detalle"
@@ -720,7 +857,7 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
                 especie = "bovino"
                 if any(p in detalle.lower() for p in ["lechón", "cerda", "verraco", "ceba", "cerdo", "chancho"]):
                     especie = "porcino"
-                elif any(p in detalle.lower() for p in ["ternero", "ternera", "toro", "vaca", "novillo", "vaquilla"]):
+                elif any(p in detalle.lower() for p in ["ternero", "ternera", "toro", "vaca", "novillo", "novilla"]):
                     especie = "bovino"
 
                 for marca in marcas:
@@ -840,7 +977,7 @@ def procesar_mensaje_whatsapp(mensaje, remitente=None):
             return (
                 "🏡 Bienvenido a Finca Digital.\n\n"
                 "Para comenzar, ¿cómo se llama tu finca?\n"
-                "(Ej: Hacienda La Tática)"
+                "(Ej: Hacienda el Frayle)"
             )
         else:
             return (
@@ -861,16 +998,32 @@ def procesar_mensaje_whatsapp(mensaje, remitente=None):
             "Envía comprobante para reactivar tu finca."
         )
 
-    if mensaje.lower().startswith("estado animal "):
-        arete = mensaje.split(" ", 2)[2].strip()
-        return consultar_estado_animal(arete)
-
+    # === NUEVO: SOPORTE PARA REPORTE ENTRE FECHAS ===
     if "reporte" in mensaje.lower():
+        # Buscar rango de fechas: "reporte del 01/12 al 10/12"
+        rango = re.search(r"reporte.*?del\s+(\d{1,2})/(\d{1,2})\s+al\s+(\d{1,2})/(\d{1,2})", mensaje.lower())
+        if rango:
+            try:
+                d1, m1, d2, m2 = map(int, rango.groups())
+                año = hoy.year
+                fecha_inicio = datetime.date(año, m1, d1)
+                fecha_fin = datetime.date(año, m2, d2)
+                if fecha_inicio > fecha_fin:
+                    fecha_inicio, fecha_fin = fecha_fin, fecha_inicio
+                return generar_reporte_personalizado(fecha_inicio, fecha_fin, finca_id=usuario_info["finca_id"])
+            except Exception as e:
+                print(f"❌ Error al parsear fechas: {e}")
+        
+        # Si no hay rango, usar frecuencia predefinida
         freq = "semanal"
         if "diario" in mensaje.lower(): freq = "diario"
         elif "mensual" in mensaje.lower(): freq = "mensual"
         elif "quincenal" in mensaje.lower(): freq = "quincenal"
         return generar_reporte(frecuencia=freq, formato="texto", finca_id=usuario_info["finca_id"])
+
+    if mensaje.lower().startswith("estado animal "):
+        arete = mensaje.split(" ", 2)[2].strip()
+        return consultar_estado_animal(arete)
 
     if mensaje.lower().startswith("exportar reporte"):
         return "📎 El reporte en Excel estará disponible pronto en tu WhatsApp."
