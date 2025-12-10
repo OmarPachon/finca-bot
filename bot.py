@@ -940,7 +940,7 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
                                 SELECT id_externo FROM animales 
                                 WHERE (marca_o_arete = %s OR id_externo LIKE %s) 
                                 AND finca_id = %s
-                            """, (marca_o_arete, f"%{marca_o_arete}", finca_id))
+                            """, (marca, f"%{marca}%", finca_id))
                             row = cursor.fetchone()
                             if row:
                                 id_externo = row[0]
