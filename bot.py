@@ -373,7 +373,7 @@ def generar_reporte(frecuencia="semanal", formato="texto", finca_id=None):
         if produccion_total:
             vegetal = []
             animal = []
-            cultivos = {"maíz", "papa", "arroz", "cacao", "café", "yuca", "plátano", "frijol", "trigo", "cebolla"}
+            cultivos = {"maíz", "papa", "arroz", "cacao", "café", "yuca", "plátano", "frijol", "citricos", "cebolla","fruta"}
             for row in produccion_total:
                 detalle = (row[3] or "").lower()
                 if any(cultivo in detalle for cultivo in cultivos):
@@ -512,7 +512,7 @@ def generar_reporte_personalizado(fecha_inicio, fecha_fin, finca_id=None):
     if produccion_total:
         vegetal = []
         animal = []
-        cultivos = {"maíz", "papa", "arroz", "cacao", "café", "yuca", "plátano", "frijol", "trigo", "cebolla"}
+        cultivos = {"maíz", "papa", "arroz", "cacao", "café", "yuca", "plátano", "frijol", "trigo", "cebolla","frutas","citricos"}
         for row in produccion_total:
             detalle = (row[3] or "").lower()
             if any(cultivo in detalle for cultivo in cultivos):
@@ -668,7 +668,7 @@ def iniciar_flujo_conversacional_existente(mensaje, user_key, state):
         if msg in ["1", "siembra", "sembrar"]:
             state["data"]["tipo"] = "siembra"
             state["step"] = "waiting_for_detalle"
-            return "🌱 ¿Qué sembraste? (Ej: maíz, cacao)"
+            return "🌱 ¿Qué sembraste? (Ej: maíz, cacao, cafe)"
 
         elif msg in ["2", "produccion", "cosecha", "leche", "carne"]:
             state["data"]["tipo"] = "produccion"
@@ -693,7 +693,7 @@ def iniciar_flujo_conversacional_existente(mensaje, user_key, state):
         elif msg in ["6", "gasto", "pagamos", "compra"]:
             state["data"]["tipo"] = "gasto"
             state["step"] = "waiting_for_detalle"
-            return "💰 ¿Qué gastaste? (Ej: medicina, jornales)"
+            return "💰 ¿Qué gastaste? (Ej: medicina, jornales, insumos)"
 
         elif msg in ["7", "labor", "macaneo", "abono","cerca"]:
             state["data"]["tipo"] = "labor"
