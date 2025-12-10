@@ -917,10 +917,21 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
             
             # EXTRA: guardar en salud_animal
             texto = mensaje_completo.lower()
-            marca_match = re.search(r"(?:marca|arete|chapeta)\s+([a-z0-9-]+)", texto, re.IGNORECASE)
-            if marca_match:
-                marca_o_arete = marca_match.group(1).upper()
-                # Buscar id_externo
+            parejas = []
+            #Opcion 1: formato "marca G01 peso 250 kg"
+            for match in re.finditer(r"marca\s+([a-z0-9-]+)\s+(?:peso\s+(\d+(?:\.\d+)?)\s*kg)?", texto, re.IGNORECASE):
+                marca = match.group(1).upper()
+                peso = float(match.group(2)) if match.group(2) else None
+                parejas.append((marca, peso))
+            # Opción 2: si no encontró pares, intentar lista separada (menos confiable)
+            if not parejas:
+                marcas = re.findall(r"marca\s+([a-z0-9-]+)", texto, re.IGNORECASE)
+                pesos = re.findall(r"peso\s*(\d+(?:\.\d+)?)\s*kg", texto, re.IGNORECASE)
+                if marcas and pesos:
+                    for i in range(min(len(marcas), len(pesos))):
+                        parejas.append((marcas[i].upper(), float(pesos[i])))
+            # Registrar cada animal
+            for marca, peso in parejas:
                 try:
                     database_url = os.environ.get("DATABASE_URL")
                     with psycopg2.connect(database_url) as conn:
@@ -933,9 +944,12 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
                             row = cursor.fetchone()
                             if row:
                                 id_externo = row[0]
-                                # Determinar tipo de sanidad
+                                # GUARDAR SANIDAD
                                 tipo_sanidad = "vacuna" if any(kw in detalle.lower() for kw in ["vacuna", "aftosa", "brucelosis"]) else "desparasitación"
                                 guardar_en_salud_animal(id_externo, tipo_sanidad, detalle, observacion, finca_id)
+                                #Actualizar peso si existe
+                                if peso is not None:
+                                    actualizar_peso_animal(marca, peso, finca_id)
                 except Exception as e:
                     print(f"❌ Error al registrar en salud_animal: {e}")
         else:
