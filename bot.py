@@ -842,18 +842,9 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
             if subtipo in ["nacimiento", "compra", "inventario_inicial"]:
                 texto_completo = f"{detalle} {observacion}".lower()
                 marcas = []
-                
-                if "marca" in texto_completo:
-                    try:
-                        parte_marcas = texto_completo.split("marca", 1)[1]
-                        codigos = re.split(r'[,y\s]+', parte_marcas)
-                        for cod in codigos:
-                            match = re.search(r'([a-z0-9-]+)', cod.strip())
-                            if match and match.group(1):
-                                marcas.append(match.group(1).upper())
-                    except Exception as e:
-                        print(f"⚠️ Error al extraer marcas: {e}")
-                
+                for match in re.finditer(r"marca\s+([a-z0-9-]+)", texto_completo, re.IGNORECASE):
+                    marcas.append(match.group(1).upper()) 
+                             
                 especie = "bovino"
                 if any(p in detalle.lower() for p in ["lechón", "cerda", "verraco", "ceba", "cerdo", "chancho"]):
                     especie = "porcino"
