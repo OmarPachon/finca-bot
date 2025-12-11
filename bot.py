@@ -859,7 +859,6 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
                     especie = "porcino"
                 elif any(p in detalle.lower() for p in ["ternero", "ternera", "toro", "vaca", "novillo", "novilla"]):
                     especie = "bovino"
-
                 for marca in marcas:
                     try:
                         prefijo = "C-" if especie == "porcino" else "V-M-"
@@ -874,14 +873,21 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
                             categoria = "ternera"
                         elif "ternero" in detalle.lower():
                             categoria = "ternero"
-
+                        #===EXTRAER PESO ASOCIADO A ESTA MARCA===
+                        peso_valor = None
+                        # Buscar patrón: "marca G01...peso 250 kg"
+                        pattern = r"marca\s+" + re.escape(marca.lower()) + r".*?peso\s*(\d+(?:\.\d+)?)\s*kg"
+                        peso_match = re.search(pattern, texto_completo, re.IGNORECASE)
+                        if peso_match:
+                            peso_valor = float(peso_match.group(1))
                         database_url = os.environ.get("DATABASE_URL")
                         with psycopg2.connect(database_url) as conn:
                             with conn.cursor() as cursor:
                                 cursor.execute('''
-                                    INSERT INTO animales (especie, id_externo, marca_o_arete, categoria, corral, estado, finca_id)
+                                    INSERT INTO animales (especie, id_externo, marca_o_arete, categoria, corral, estado,peso, finca_id)
                                     VALUES (%s, %s, %s, %s, %s, %s, %s)
-                                    ON CONFLICT (id_externo) DO NOTHING
+                                    ON CONFLICT (id_externo) DO UPDATE
+                                    SET peso = EXCLUDED.peso
                                 ''', (
                                     especie,
                                     id_externo,
@@ -889,6 +895,7 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
                                     categoria,
                                     lugar,
                                     "activo",
+                                    peso_valor,
                                     finca_id
                                 ))
                             conn.commit()
