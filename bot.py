@@ -297,7 +297,78 @@ def guardar_registro(tipo_actividad, accion, detalle, lugar=None, cantidad=None,
                 ''', (fecha, tipo_actividad, accion, detalle, lugar, cantidad, valor, unidad, observacion, jornales, datetime.datetime.now().isoformat(), finca_id, usuario_id))
             conn.commit()
         print(f"✅ REGISTRO GUARDADO en finca {finca_id}")
-
+# === NUEVA FUNCIÓN: INVENTARIO DE ANIMALES ACTIVOS ===
+def generar_inventario_animales(finca_id):
+    """Genera un resumen del inventario de animales activos en la finca."""
+    try:
+        database_url = os.environ.get("DATABASE_URL")
+        with psycopg2.connect(database_url) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                               SELECT especie, marca_o_arete, categoria, peso, corral
+                               FROM animales
+                               WHERE finca_id = %s AND estado = 'activo'
+                               ORDER BY especie, marca_o_arete
+                               """, (finca_id,))
+                animales = cursor.fetchall()
+            if not animales:
+                return "📋 No hay animales activos registrados en esta finca."
+            # Agrupar por especie
+            bovinos = []
+            porcinos = []
+            otros = []
+            for esp, marca, cat, peso, corral in animales:
+                linea = f"• {marca}"
+                if cat:
+                    linea += f" – {cat}"
+                if peso:
+                    linea += f" – {peso} kg"
+                if corral:
+                    linea += f" – {corral}"
+                if esp == "bovino":
+                    bovinos.append(linea)
+                elif esp == "porcino":
+                    porcinos.append(linea)
+                else:
+                    otros.append(linea)
+            lines = [
+                "📋 INVENTARIO DE ANIMALES ACTIVOS",
+                f"Fecha: {datetime.date.today().strftime('%d/%b/%Y')}",
+                ""
+                ]
+            if bovinos:
+                lines.append(f"🐮 BOVINOS ({len(bovinos)})")
+                lines.extend(bovinos)
+                lines.append("")
+            if porcinos:
+                lines.append(f"🐷 PORCINOS ({len(porcinos)})")
+                lines.extend(porcinos)
+                lines.append("")
+            if otros:
+                lines.append(f"🦘 OTROS ({len(otros)})")
+                lines.extend(otros)
+                lines.append("")
+            lines.append(f"✅ Total: {len(animales)} animales activos")
+            return "\n".join(lines)
+    except Exception as e:
+        print(f"❌ Error al generar inventario: {e}")
+        return "❌ No se pudo cargar el inventario de animales."
+def guardar_registro(tipo_actividad, accion, detalle, lugar=None, cantidad=None, valor=0, unidad=None, observacion=None, jornales=None, finca_id=None, usuario_id=None, mensaje_completo=None):
+    print(f"🔍 GUARDANDO REGISTRO en finca {finca_id}: {tipo_actividad} | {detalle}")
+    try:
+        database_url = os.environ.get("DATABASE_URL")
+        if not database_url:
+            print("❌ DATABASE_URL no está definida")
+            return
+        fecha = datetime.date.today().isoformat()
+        with psycopg2.connect(database_url) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute('''
+                    INSERT INTO registros (fecha, tipo_actividad, accion, detalle, lugar, cantidad, valor, unidad, observacion, jornales, fecha_registro, finca_id, usuario_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ''', (fecha, tipo_actividad, accion, detalle, lugar, cantidad, valor, unidad, observacion, jornales, datetime.datetime.now().isoformat(), finca_id, usuario_id))
+            conn.commit()
+ 
         # === EXTRAER PESO Y MARCA DE CUALQUIER MENSAJE ===
         if mensaje_completo and finca_id:
             peso_match = re.search(r"peso\s*(\d+(?:\.\d+)?)\s*(?:kg|kilo|kilos)", mensaje_completo, re.IGNORECASE)
@@ -1036,6 +1107,8 @@ def procesar_mensaje_whatsapp(mensaje, remitente=None):
     if mensaje.lower().startswith("estado animal "):
         arete = mensaje.split(" ", 2)[2].strip()
         return consultar_estado_animal(arete)
+    if mensaje.strip().lower() in ["inventario animales", "lista de animales", "animales", "inventario"]:
+        return generar_inventario_animales(usuario_info["finca_id"])
 
     if mensaje.lower().startswith("exportar reporte"):
         return "📎 El reporte en Excel estará disponible pronto en tu WhatsApp."
