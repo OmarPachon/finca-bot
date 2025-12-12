@@ -739,7 +739,7 @@ def iniciar_flujo_conversacional_existente(mensaje, user_key, state):
     elif state["step"] == "waiting_for_unidad":
         state["data"]["unidad"] = mensaje
         tipo = state["data"]["tipo"]
-        actividades_con_jornales = ["siembra", "produccion", "labor", "sanidad_animal"]
+        actividades_con_jornales = ["siembra", "labor", "sanidad_animal"]
         if tipo in actividades_con_jornales:
             state["step"] = "waiting_for_jornales"
             return "👷 ¿Cuántos jornales se usaron? (Ej: 2) — o '0' si no aplica"
@@ -903,7 +903,15 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
                             if row:
                                 id_externo = row[0]
                                 # GUARDAR SANIDAD
-                                tipo_sanidad = "vacuna" if any(kw in detalle.lower() for kw in ["vacuna", "aftosa", "brucelosis"]) else "desparasitación"
+                                detalle_lower = detalle.lower()
+                                if any(kw in detalle_lower for kw in ["vacuna", "aftosa", "brucelosis"]):
+                                    tipo_sanidad = "vacuna"
+                                elif any(kw in detalle_lower for kw in ["desparasit", "garrapata", "gusano"]):
+                                    tipo_sanidad = "desparasitación"
+                                elif any(kw in detalle_lower for kw in ["monta", "insemin", "preñez", "celo", "reproduccion","reproducción" "servicio"]):
+                                    tipo_sanidad = "reproducción"
+                                else:
+                                    tipo_sanidad = "sanidad"
                                 guardar_en_salud_animal(id_externo, tipo_sanidad, detalle, observacion, finca_id)
                                 #Actualizar peso si existe
                                 if peso is not None:
@@ -996,7 +1004,7 @@ def procesar_mensaje_whatsapp(mensaje, remitente=None):
             "2. 🌾 Producción\n"
             "3. 💉 Sanidad\n"
             "4. 🐷 Ingreso animal\n"
-            "5. 🐄 Salida animal\n"
+            "5. 🐄 Salida animal y Reproducción\n"
             "6. 💰 Gasto\n"
             "7. 🛠️ Labor\n"
             "Escribe 'fin' para salir."
