@@ -623,8 +623,9 @@ def consultar_estado_animal(arete):
                     ORDER BY fecha DESC
                 """, (arete.strip().upper(), arete.strip().upper()))
                 historial = cursor.fetchall()
+                icono = "🐮" if especie == "bovino" else "🐷" if especie == "porcino" else "🦘"
                 respuesta = [
-                    f"🐷 ANIMAL {arete.strip().upper()} ({especie})",
+                    f"{icono} ANIMAL {arete.strip().upper()} ({especie})",
                     f"• Estado: {estado}",
                     f"• Peso: {peso or 'No registrado'} kg",
                     f"• Corral: {corral or 'No asignado'}",
