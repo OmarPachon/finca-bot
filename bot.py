@@ -983,7 +983,7 @@ def procesar_mensaje_whatsapp(mensaje, remitente=None):
     if mensaje.lower().startswith("estado animal "):
         arete = mensaje.split(" ", 2)[2].strip()
         return consultar_estado_animal(arete)
-    if mensaje.strip().lower() in ["inventario animales", "lista de animales", "animales", "inventario"]:
+    if mensaje.strip().lower() in ["inventario animales", "lista de animales", "inventario"]:
         return generar_inventario_animales(usuario_info["finca_id"])
     if mensaje.lower().startswith("exportar reporte"):
         return "📎 El reporte en Excel estará disponible pronto en tu WhatsApp."
