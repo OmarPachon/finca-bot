@@ -353,6 +353,7 @@ def generar_inventario_animales(finca_id):
     except Exception as e:
         print(f"❌ Error al generar inventario: {e}")
         return "❌ No se pudo cargar el inventario de animales."
+    
 def guardar_registro(tipo_actividad, accion, detalle, lugar=None, cantidad=None, valor=0, unidad=None, observacion=None, jornales=None, finca_id=None, usuario_id=None, mensaje_completo=None):
     print(f"🔍 GUARDANDO REGISTRO en finca {finca_id}: {tipo_actividad} | {detalle}")
     try:
