@@ -25,7 +25,8 @@ def inicializar_bd():
                 nombre VARCHAR(100) UNIQUE NOT NULL,
                 telefono_dueño VARCHAR(25) UNIQUE NOT NULL,
                 suscripcion_activa BOOLEAN DEFAULT FALSE,
-                vencimiento_suscripcion DATE
+                vencimiento_suscripcion DATE,
+                clave_secreta TEXT UNIQUE
             )
         ''')
         cursor.execute('''
@@ -163,7 +164,7 @@ def registrar_nueva_finca(nombre_finca, remitente):
         return (
             f"🏡 ¡Finca '{nombre_finca}' registrada!\n"
             "💳 **Para activarla, debes suscribirte mensualmente.\n"
-            "**Valor:** $50.000 COP/mes\n"
+            "**Valor:** $100.000 COP/mes\n"
             "**Incluye:** Tu número (como dueño) + hasta 3 empleados para registrar labores.\n"
             "**Nequi:** 314 353 9351 (Omar Pachón)\n"
             "📲 **Al realizar el pago, envía el comprobante y los números de tus empleados:**\n"
@@ -665,7 +666,7 @@ def iniciar_flujo_conversacional_existente(mensaje, user_key, state):
         elif msg in ["3", "sanidad", "vacuna", "desparasitar"]:
             state["data"]["tipo"] = "sanidad_animal"
             state["step"] = "waiting_for_detalle"
-            return "💉 ¿Fue vacuna o desparasitación?"
+            return "💉 ¿Fue vacuna o desparasitación, Inseminación, monta?"
         elif msg in ["4", "ingreso", "compra", "nacimiento", "inventario"]:
             state["data"]["tipo"] = "ingreso_animal"
             state["step"] = "waiting_for_subtipo"
@@ -874,22 +875,26 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
                 mensaje_completo=mensaje_completo
             )
             # EXTRA: guardar en salud_animal
+                        # EXTRA: guardar en salud_animal
             texto = mensaje_completo.lower()
-            parejas = []
-            #Opcion 1: formato "marca G01 peso 250 kg"
+            # Extraer TODAS las marcas mencionadas
+            marcas_encontradas = re.findall(r"marca\s+([a-z0-9-]+)", texto, re.IGNORECASE)
+            marcas_encontradas = [m.upper() for m in marcas_encontradas]
+
+            # Extraer pares marca-peso (si existen)
+            parejas = {}
             for match in re.finditer(r"marca\s+([a-z0-9-]+)\s+(?:peso\s+(\d+(?:\.\d+)?)\s*kg)?", texto, re.IGNORECASE):
                 marca = match.group(1).upper()
                 peso = float(match.group(2)) if match.group(2) else None
-                parejas.append((marca, peso))
-            # Opción 2: si no encontró pares, intentar lista separada (menos confiable)
-            if not parejas:
-                marcas = re.findall(r"marca\s+([a-z0-9-]+)", texto, re.IGNORECASE)
-                pesos = re.findall(r"peso\s*(\d+(?:\.\d+)?)\s*kg", texto, re.IGNORECASE)
-                if marcas and pesos:
-                    for i in range(min(len(marcas), len(pesos))):
-                        parejas.append((marcas[i].upper(), float(pesos[i])))
-            # Registrar cada animal
-            for marca, peso in parejas:
+                parejas[marca] = peso
+
+            # Si no hay pares pero hay marcas, usar marcas solas con peso=None
+            if not parejas and marcas_encontradas:
+                for marca in marcas_encontradas:
+                    parejas[marca] = None
+
+            # Registrar cada animal en salud_animal y actualizar peso
+            for marca, peso in parejas.items():
                 try:
                     database_url = os.environ.get("DATABASE_URL")
                     with psycopg2.connect(database_url) as conn:
@@ -902,22 +907,22 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
                             row = cursor.fetchone()
                             if row:
                                 id_externo = row[0]
-                                # GUARDAR SANIDAD
+                                # === CLASIFICAR EL TIPO DE EVENTO ===
                                 detalle_lower = detalle.lower()
                                 if any(kw in detalle_lower for kw in ["vacuna", "aftosa", "brucelosis"]):
                                     tipo_sanidad = "vacuna"
                                 elif any(kw in detalle_lower for kw in ["desparasit", "garrapata", "gusano"]):
                                     tipo_sanidad = "desparasitación"
-                                elif any(kw in detalle_lower for kw in ["monta", "insemin", "preñez", "celo", "reproduccion","reproducción" "servicio"]):
+                                elif any(kw in detalle_lower for kw in ["monta", "insemin", "preñez", "celo", "reproduccion", "reproducción", "inseminacion", "servicio"]):
                                     tipo_sanidad = "reproducción"
                                 else:
                                     tipo_sanidad = "sanidad"
                                 guardar_en_salud_animal(id_externo, tipo_sanidad, detalle, observacion, finca_id)
-                                #Actualizar peso si existe
+                                # Actualizar peso si se proporcionó
                                 if peso is not None:
                                     actualizar_peso_animal(marca, peso, finca_id)
                 except Exception as e:
-                    print(f"❌ Error al registrar en salud_animal: {e}")
+                    print(f"❌ Error al registrar sanidad para {marca}: {e}")
         else:
             guardar_registro(
                 tipo, 

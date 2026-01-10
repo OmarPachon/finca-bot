@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 app.py - Webhook para WhatsApp + Twilio + Gestión completa de fincas y empleados
+Incluye dashboard web por finca con URL secreta
 """
 
 import os
@@ -9,6 +10,7 @@ import traceback
 import datetime
 import psycopg2
 import re
+import secrets
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 
@@ -96,7 +98,7 @@ def formulario_activacion():
     </html>
     '''
 
-# === RUTA: ACTIVAR FINCA CON EMPLEADOS (versión mejorada) ===
+# === RUTA: ACTIVAR FINCA CON EMPLEADOS (versión mejorada con clave_secreta) ===
 @app.route("/activar-finca-con-empleados")
 def activar_finca_con_empleados():
     nombre_finca = request.args.get("nombre", "").strip()
@@ -108,18 +110,15 @@ def activar_finca_con_empleados():
 
     # Función para limpiar y validar un número colombiano
     def formatear_numero(num):
-        # Eliminar todo excepto dígitos
         solo_digitos = re.sub(r'\D', '', num)
         if len(solo_digitos) == 10 and solo_digitos.startswith('3'):
             return f"whatsapp:+57{solo_digitos}"
         return None
 
-    # Procesar dueño
     dueno_formateado = formatear_numero(telefono_dueno)
     if not dueno_formateado:
         return f"❌ Número de dueño inválido: {telefono_dueno}. Debe ser 10 dígitos y empezar con 3.", 400
 
-    # Procesar empleados
     lista_empleados = []
     if empleados_raw:
         for num in empleados_raw.split(","):
@@ -141,15 +140,19 @@ def activar_finca_con_empleados():
 
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cur:
-                # Crear o actualizar finca
+                # Generar clave secreta única
+                clave_secreta = secrets.token_urlsafe(16)
+                
+                # Crear o actualizar finca (incluyendo clave_secreta)
                 cur.execute("""
-                    INSERT INTO fincas (nombre, telefono_dueño, suscripcion_activa, vencimiento_suscripcion)
-                    VALUES (%s, %s, %s, CURRENT_DATE + INTERVAL '30 days')
+                    INSERT INTO fincas (nombre, telefono_dueño, suscripcion_activa, vencimiento_suscripcion, clave_secreta)
+                    VALUES (%s, %s, %s, CURRENT_DATE + INTERVAL '30 days', %s)
                     ON CONFLICT (nombre) DO UPDATE 
                     SET telefono_dueño = EXCLUDED.telefono_dueño,
-                        suscripcion_activa = EXCLUDED.suscripcion_activa
+                        suscripcion_activa = EXCLUDED.suscripcion_activa,
+                        clave_secreta = EXCLUDED.clave_secreta
                     RETURNING id
-                """, (nombre_finca, dueno_formateado, True))
+                """, (nombre_finca, dueno_formateado, True, clave_secreta))
                 finca_id = cur.fetchone()[0]
 
                 # Registrar dueño
@@ -172,15 +175,95 @@ def activar_finca_con_empleados():
                 conn.commit()
         
         empleados_txt = ", ".join(lista_empleados) if lista_empleados else "ninguno"
+        url_dashboard = f"https://finca-bot.onrender.com/finca/{clave_secreta}"
         return (
             f"✅ Finca '{nombre_finca}' activada con éxito.<br>"
             f"• Dueño: {dueno_formateado}<br>"
             f"• Empleados ({len(lista_empleados)}): {empleados_txt}<br>"
-            f"• Válida hasta: {datetime.date.today() + datetime.timedelta(days=30)}"
+            f"• Válida hasta: {datetime.date.today() + datetime.timedelta(days=30)}<br><br>"
+            f"🔐 <strong>Dashboard privado:</strong> <a href='{url_dashboard}' target='_blank'>{url_dashboard}</a>"
         ), 200
 
     except Exception as e:
         return f"❌ Error al activar: {e}", 500
+
+# === RUTA: DASHBOARD POR FINCA (acceso con clave secreta) ===
+@app.route("/finca/<clave>")
+def dashboard_finca(clave):
+    try:
+        database_url = os.environ.get("DATABASE_URL")
+        if not database_url:
+            return "❌ DATABASE_URL no configurada", 500
+
+        with psycopg2.connect(database_url) as conn:
+            with conn.cursor() as cur:
+                # Verificar que la clave sea válida
+                cur.execute("SELECT nombre FROM fincas WHERE clave_secreta = %s", (clave,))
+                finca_row = cur.fetchone()
+                if not finca_row:
+                    return "❌ Acceso denegado. URL inválida.", 403
+                nombre_finca = finca_row[0]
+
+                # Obtener los últimos 200 registros de la finca
+                cur.execute("""
+                    SELECT fecha, tipo_actividad, detalle, lugar, cantidad, valor, observacion
+                    FROM registros
+                    WHERE finca_id = (SELECT id FROM fincas WHERE clave_secreta = %s)
+                    ORDER BY fecha DESC, id DESC
+                    LIMIT 200
+                """, (clave,))
+                registros = cur.fetchall()
+
+        # Generar HTML simple y limpio
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>{nombre_finca} - Finca Digital</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; max-width: 1200px; margin: 20px auto; padding: 20px; }}
+                h1 {{ color: #28a745; }}
+                table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+                th, td {{ border: 1px solid #ddd; padding: 10px; text-align: left; }}
+                th {{ background-color: #f8f9fa; }}
+                tr:nth-child(even) {{ background-color: #f2f2f2; }}
+                .footer {{ margin-top: 30px; font-size: 0.9em; color: #666; }}
+            </style>
+        </head>
+        <body>
+            <h1>📊 Movimientos de {nombre_finca}</h1>
+            <p><em>Últimos 200 registros</em></p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Tipo</th>
+                        <th>Detalle</th>
+                        <th>Lugar</th>
+                        <th>Cantidad</th>
+                        <th>Valor (COP)</th>
+                        <th>Observación</th>
+                    </tr>
+                </thead>
+                <tbody>
+        """
+        for reg in registros:
+            valor_str = f"${reg[5]:,.0f}" if reg[5] and reg[5] > 0 else ""
+            html += f"<tr><td>{reg[0]}</td><td>{reg[1]}</td><td>{reg[2]}</td><td>{reg[3]}</td><td>{reg[4] or ''}</td><td>{valor_str}</td><td>{reg[6] or ''}</td></tr>"
+        
+        html += """
+                </tbody>
+            </table>
+            <div class="footer">
+                🔒 Datos confidenciales. No compartas esta URL.
+            </div>
+        </body>
+        </html>
+        """
+        return html
+    except Exception as e:
+        return f"❌ Error al cargar el dashboard: {e}", 500
 
 # === RUTA: CONSULTAR MI FINCA_ID (para dueños) ===
 @app.route("/mi-finca-id")
