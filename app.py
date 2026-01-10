@@ -27,6 +27,19 @@ except Exception as e:
     print(f"📋 Traceback:\n{traceback.format_exc()}")
     bot = None
 
+# === INICIALIZAR BASE DE DATOS AL INICIAR LA APP ===
+if bot and hasattr(bot, 'inicializar_bd'):
+    try:
+        if bot.inicializar_bd():
+            print("✅ Base de datos inicializada al arrancar la app.")
+        else:
+            print("⚠️ La inicialización de la base de datos falló o ya estaba lista.")
+    except Exception as e:
+        print(f"❌ Error al inicializar BD al inicio: {e}")
+        print(traceback.format_exc())
+else:
+    print("⚠️ Módulo 'bot' no disponible para inicializar BD al inicio.")
+
 app = Flask(__name__)
 
 # === RUTA PRINCIPAL ===
@@ -175,7 +188,7 @@ def activar_finca_con_empleados():
                 conn.commit()
         
         empleados_txt = ", ".join(lista_empleados) if lista_empleados else "ninguno"
-        url_dashboard = f"https://finca-bot.onrender.com/finca/{clave_secreta}"
+        url_dashboard = f"https://finca-bot.onrender.com/finca/{clave_secreta}"  # ← Corregido: sin espacios
         return (
             f"✅ Finca '{nombre_finca}' activada con éxito.<br>"
             f"• Dueño: {dueno_formateado}<br>"
