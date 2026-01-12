@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 app.py - Webhook para WhatsApp + Twilio + Gestión completa de fincas y empleados
-Incluye dashboard web por finca con URL secreta
+Incluye dashboard web por finca con URL secreta e inventario mejorado
 """
 
 import os
@@ -200,7 +200,7 @@ def activar_finca_con_empleados():
     except Exception as e:
         return f"❌ Error al activar: {e}", 500
 
-# === RUTA: DASHBOARD POR FINCA (acceso con clave secreta) ===
+# === RUTA: DASHBOARD POR FINCA (mejorado con inventario y finanzas) ===
 @app.route("/finca/<clave>")
 def dashboard_finca(clave):
     try:
@@ -210,24 +210,49 @@ def dashboard_finca(clave):
 
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cur:
-                # Verificar que la clave sea válida
-                cur.execute("SELECT nombre FROM fincas WHERE clave_secreta = %s", (clave,))
+                # Verificar acceso
+                cur.execute("SELECT nombre, id FROM fincas WHERE clave_secreta = %s", (clave,))
                 finca_row = cur.fetchone()
                 if not finca_row:
                     return "❌ Acceso denegado. URL inválida.", 403
-                nombre_finca = finca_row[0]
+                nombre_finca, finca_id = finca_row
 
-                # Obtener los últimos 200 registros de la finca
+                # === INVENTARIO DE ANIMALES ===
+                cur.execute("""
+                    SELECT especie, marca_o_arete, categoria, peso, corral
+                    FROM animales
+                    WHERE finca_id = %s AND estado = 'activo'
+                    ORDER BY especie, marca_o_arete
+                """, (finca_id,))
+                inventario = cur.fetchall()
+
+                # === MOVIMIENTOS RECIENTES ===
                 cur.execute("""
                     SELECT fecha, tipo_actividad, detalle, lugar, cantidad, valor, observacion
                     FROM registros
-                    WHERE finca_id = (SELECT id FROM fincas WHERE clave_secreta = %s)
+                    WHERE finca_id = %s
                     ORDER BY fecha DESC, id DESC
                     LIMIT 200
-                """, (clave,))
+                """, (finca_id,))
                 registros = cur.fetchall()
 
-        # Generar HTML simple y limpio
+                # === RESUMEN FINANCIERO DEL MES ACTUAL ===
+                hoy = datetime.date.today()
+                inicio_mes = hoy.replace(day=1)
+                cur.execute("""
+                    SELECT 
+                        SUM(CASE WHEN tipo_actividad = 'produccion' THEN valor ELSE 0 END) AS ingresos,
+                        SUM(CASE WHEN tipo_actividad = 'gasto' THEN valor ELSE 0 END) +
+                        SUM(CASE WHEN jornales > 0 THEN valor ELSE 0 END) AS gastos
+                    FROM registros
+                    WHERE finca_id = %s AND fecha >= %s
+                """, (finca_id, inicio_mes.isoformat()))
+                finanzas = cur.fetchone()
+                ingresos = finanzas[0] or 0
+                gastos = finanzas[1] or 0
+                balance = ingresos - gastos
+
+        # === GENERAR HTML ===
         html = f"""
         <!DOCTYPE html>
         <html>
@@ -236,17 +261,53 @@ def dashboard_finca(clave):
             <title>{nombre_finca} - Finca Digital</title>
             <style>
                 body {{ font-family: Arial, sans-serif; max-width: 1200px; margin: 20px auto; padding: 20px; }}
-                h1 {{ color: #28a745; }}
-                table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+                h1, h2 {{ color: #28a745; }}
+                table {{ width: 100%; border-collapse: collapse; margin: 15px 0; }}
                 th, td {{ border: 1px solid #ddd; padding: 10px; text-align: left; }}
                 th {{ background-color: #f8f9fa; }}
                 tr:nth-child(even) {{ background-color: #f2f2f2; }}
+                .resumen {{ background: #e9f7ef; padding: 15px; border-radius: 6px; margin: 20px 0; }}
                 .footer {{ margin-top: 30px; font-size: 0.9em; color: #666; }}
             </style>
         </head>
         <body>
-            <h1>📊 Movimientos de {nombre_finca}</h1>
-            <p><em>Últimos 200 registros</em></p>
+            <h1>📊 Dashboard - {nombre_finca}</h1>
+            
+            <div class="resumen">
+                <h2>💰 Resumen Financiero (mes actual)</h2>
+                <p><strong>Ingresos:</strong> ${ingresos:,.0f} COP</p>
+                <p><strong>Gastos:</strong> ${gastos:,.0f} COP</p>
+                <p><strong>Balance estimado:</strong> ${balance:,.0f} COP</p>
+            </div>
+
+            <h2>📋 Inventario de Animales Activos</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Especie</th>
+                        <th>Marca</th>
+                        <th>Categoría</th>
+                        <th>Peso (kg)</th>
+                        <th>Corral / Lugar</th>
+                    </tr>
+                </thead>
+                <tbody>
+        """
+        if inventario:
+            for esp, marca, cat, peso, corral in inventario:
+                especie_txt = "Bovino" if esp == "bovino" else "Porcino" if esp == "porcino" else esp.title()
+                peso_str = f"{peso:.1f}" if peso else "—"
+                cat_str = cat or "—"
+                corral_str = corral or "—"
+                html += f"<tr><td>{especie_txt}</td><td>{marca}</td><td>{cat_str}</td><td>{peso_str}</td><td>{corral_str}</td></tr>"
+        else:
+            html += "<tr><td colspan='5'>No hay animales registrados</td></tr>"
+
+        html += """
+                </tbody>
+            </table>
+
+            <h2>📝 Últimos Movimientos (máx. 200)</h2>
             <table>
                 <thead>
                     <tr>
@@ -262,14 +323,17 @@ def dashboard_finca(clave):
                 <tbody>
         """
         for reg in registros:
-            valor_str = f"${reg[5]:,.0f}" if reg[5] and reg[5] > 0 else ""
+            valor_str = f"${reg[5]:,.0f}" if reg[5] and reg[5] > 0 else "—"
             html += f"<tr><td>{reg[0]}</td><td>{reg[1]}</td><td>{reg[2]}</td><td>{reg[3]}</td><td>{reg[4] or ''}</td><td>{valor_str}</td><td>{reg[6] or ''}</td></tr>"
-        
+
         html += """
                 </tbody>
             </table>
+
             <div class="footer">
                 🔒 Datos confidenciales. No compartas esta URL.
+                <br>
+                💡 Pronto: opción de exportar a Excel (al migrar a plan pago).
             </div>
         </body>
         </html>
