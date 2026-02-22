@@ -200,7 +200,7 @@ def activar_finca_con_empleados():
     except Exception as e:
         return f"❌ Error al activar: {e}", 500
 
-# === RUTA: DASHBOARD POR FINCA (mejorado con inventario y finanzas) ===
+# === RUTA: DASHBOARD POR FINCA (mejorado con gráficos 2D y inventario) ===
 @app.route("/finca/<clave>")
 def dashboard_finca(clave):
     try:
@@ -225,6 +225,18 @@ def dashboard_finca(clave):
                     ORDER BY especie, marca_o_arete
                 """, (finca_id,))
                 inventario = cur.fetchall()
+
+                # === CONTAR ANIMALES POR ESPECIE (para gráfico) ===
+                cur.execute("""
+                    SELECT especie, COUNT(*) 
+                    FROM animales 
+                    WHERE finca_id = %s AND estado = 'activo'
+                    GROUP BY especie
+                """, (finca_id,))
+                animales_por_especie = cur.fetchall()
+                bovinos = sum(c for esp, c in animales_por_especie if esp == 'bovino')
+                porcinos = sum(c for esp, c in animales_por_especie if esp == 'porcino')
+                otros = sum(c for esp, c in animales_por_especie if esp not in ['bovino', 'porcino'])
 
                 # === MOVIMIENTOS RECIENTES ===
                 cur.execute("""
@@ -258,28 +270,168 @@ def dashboard_finca(clave):
         <html>
         <head>
             <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
             <title>{nombre_finca} - Finca Digital</title>
+            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
             <style>
-                body {{ font-family: Arial, sans-serif; max-width: 1200px; margin: 20px auto; padding: 20px; }}
-                h1, h2 {{ color: #28a745; }}
-                table {{ width: 100%; border-collapse: collapse; margin: 15px 0; }}
-                th, td {{ border: 1px solid #ddd; padding: 10px; text-align: left; }}
-                th {{ background-color: #f8f9fa; }}
-                tr:nth-child(even) {{ background-color: #f2f2f2; }}
-                .resumen {{ background: #e9f7ef; padding: 15px; border-radius: 6px; margin: 20px 0; }}
-                .footer {{ margin-top: 30px; font-size: 0.9em; color: #666; }}
+                * {{ box-sizing: border-box; }}
+                body {{ 
+                    font-family: 'Segoe UI', Arial, sans-serif; 
+                    max-width: 1200px; 
+                    margin: 0 auto; 
+                    padding: 20px; 
+                    background: #f5f7fa;
+                }}
+                h1 {{ color: #198754; text-align: center; margin-bottom: 10px; }}
+                h2 {{ color: #198754; font-size: 1.3em; margin-top: 25px; }}
+                h3 {{ color: #2c3e50; font-size: 1.1em; margin: 0 0 15px 0; }}
+                
+                /* TARJETAS FINANCIERAS */
+                .resumen {{ 
+                    display: grid; 
+                    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); 
+                    gap: 20px; 
+                    margin: 25px 0; 
+                }}
+                .tarjeta {{ 
+                    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+                    padding: 25px; 
+                    border-radius: 12px; 
+                    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+                    border-left: 5px solid;
+                    transition: transform 0.2s ease;
+                }}
+                .tarjeta:hover {{ transform: translateY(-3px); }}
+                .tarjeta.ingresos {{ border-left-color: #28a745; }}
+                .tarjeta.gastos {{ border-left-color: #dc3545; }}
+                .tarjeta.balance {{ border-left-color: #0d6efd; }}
+                .tarjeta h3 {{ color: #6c757d; font-size: 0.9em; text-transform: uppercase; letter-spacing: 1px; }}
+                .tarjeta .valor {{ 
+                    font-size: 2em; 
+                    font-weight: bold; 
+                    color: #2c3e50; 
+                    margin: 10px 0;
+                }}
+                .tarjeta.ingresos .valor {{ color: #28a745; }}
+                .tarjeta.gastos .valor {{ color: #dc3545; }}
+                .tarjeta.balance .valor {{ color: #0d6efd; }}
+                
+                /* GRÁFICOS */
+                .graficos-container {{
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+                    gap: 25px;
+                    margin: 30px 0;
+                }}
+                .grafico-card {{
+                    background: white;
+                    padding: 25px;
+                    border-radius: 12px;
+                    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+                }}
+                
+                /* TABLAS */
+                table {{ 
+                    width: 100%; 
+                    border-collapse: collapse; 
+                    margin: 20px 0;
+                    background: white;
+                    border-radius: 8px;
+                    overflow: hidden;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+                }}
+                th, td {{ 
+                    border: 1px solid #e9ecef; 
+                    padding: 12px 15px; 
+                    text-align: left; 
+                }}
+                th {{ 
+                    background: linear-gradient(135deg, #198754 0%, #146c43 100%);
+                    color: white;
+                    font-weight: 600;
+                }}
+                tr:nth-child(even) {{ background-color: #f8f9fa; }}
+                tr:hover {{ background-color: #e9f7ef; }}
+                
+                /* BOTÓN EXPORTAR */
+                .btn-export {{
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    background: linear-gradient(135deg, #198754 0%, #146c43 100%);
+                    color: white;
+                    padding: 14px 28px;
+                    text-decoration: none;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    box-shadow: 0 4px 12px rgba(25, 135, 84, 0.3);
+                    transition: all 0.3s ease;
+                    margin: 20px 0;
+                }}
+                .btn-export:hover {{
+                    transform: translateY(-2px);
+                    box-shadow: 0 6px 20px rgba(25, 135, 84, 0.4);
+                }}
+                
+                .footer {{ 
+                    margin-top: 40px; 
+                    padding: 20px;
+                    text-align: center;
+                    font-size: 0.9em; 
+                    color: #6c757d;
+                    border-top: 1px solid #e9ecef;
+                }}
+                
+                /* RESPONSIVE */
+                @media (max-width: 768px) {{
+                    .tarjeta .valor {{ font-size: 1.5em; }}
+                    .graficos-container {{ grid-template-columns: 1fr; }}
+                    th, td {{ padding: 10px; font-size: 0.9em; }}
+                }}
             </style>
         </head>
         <body>
             <h1>📊 Dashboard - {nombre_finca}</h1>
             
+            <!-- BOTÓN EXPORTAR -->
+            <div style="text-align: center;">
+                <a href="/finca/{clave}/exportar-excel" class="btn-export">
+                    📥 EXPORTAR A EXCEL
+                </a>
+            </div>
+            
+            <!-- TARJETAS FINANCIERAS -->
             <div class="resumen">
-                <h2>💰 Resumen Financiero (mes actual)</h2>
-                <p><strong>Ingresos:</strong> ${ingresos:,.0f} COP</p>
-                <p><strong>Gastos:</strong> ${gastos:,.0f} COP</p>
-                <p><strong>Balance estimado:</strong> ${balance:,.0f} COP</p>
+                <div class="tarjeta ingresos">
+                    <h3>💰 Ingresos</h3>
+                    <div class="valor">${ingresos:,.0f}</div>
+                    <small style="color: #6c757d;">Mes actual</small>
+                </div>
+                <div class="tarjeta gastos">
+                    <h3>🔴 Gastos</h3>
+                    <div class="valor">${gastos:,.0f}</div>
+                    <small style="color: #6c757d;">Mes actual</small>
+                </div>
+                <div class="tarjeta balance">
+                    <h3>📈 Balance</h3>
+                    <div class="valor">${balance:,.0f}</div>
+                    <small style="color: #6c757d;">{'Positivo' if balance >= 0 else 'Negativo'}</small>
+                </div>
             </div>
 
+            <!-- GRÁFICOS 2D -->
+            <div class="graficos-container">
+                <div class="grafico-card">
+                    <h3>📊 Ingresos vs Gastos</h3>
+                    <canvas id="graficoFinanciero"></canvas>
+                </div>
+                <div class="grafico-card">
+                    <h3>🐮🐷 Distribución de Animales</h3>
+                    <canvas id="graficoAnimales"></canvas>
+                </div>
+            </div>
+
+            <!-- INVENTARIO -->
             <h2>📋 Inventario de Animales Activos</h2>
             <table>
                 <thead>
@@ -293,6 +445,7 @@ def dashboard_finca(clave):
                 </thead>
                 <tbody>
         """
+        
         if inventario:
             for esp, marca, cat, peso, corral in inventario:
                 especie_txt = "Bovino" if esp == "bovino" else "Porcino" if esp == "porcino" else esp.title()
@@ -307,6 +460,7 @@ def dashboard_finca(clave):
                 </tbody>
             </table>
 
+            <!-- MOVIMIENTOS -->
             <h2>📝 Últimos Movimientos (máx. 200)</h2>
             <table>
                 <thead>
@@ -326,14 +480,116 @@ def dashboard_finca(clave):
             valor_str = f"${reg[5]:,.0f}" if reg[5] and reg[5] > 0 else "—"
             html += f"<tr><td>{reg[0]}</td><td>{reg[1]}</td><td>{reg[2]}</td><td>{reg[3]}</td><td>{reg[4] or ''}</td><td>{valor_str}</td><td>{reg[6] or ''}</td></tr>"
 
-        html += """
+        html += f"""
                 </tbody>
             </table>
+
+            <!-- SCRIPT GRÁFICOS -->
+            <script>
+            // === GRÁFICO FINANCIERO ===
+            const ctxFin = document.getElementById('graficoFinanciero').getContext('2d');
+            new Chart(ctxFin, {{
+                type: 'bar',
+                 {{
+                    labels: ['Ingresos', 'Gastos', 'Balance'],
+                    datasets: [{{
+                        label: 'COP',
+                         [{ingresos}, {gastos}, {balance}],
+                        backgroundColor: [
+                            'rgba(40, 167, 69, 0.85)',
+                            'rgba(220, 53, 69, 0.85)',
+                            '{ "rgba(0, 123, 255, 0.85)" if balance >= 0 else "rgba(255, 193, 7, 0.85)" }'
+                        ],
+                        borderColor: [
+                            'rgba(40, 167, 69, 1)',
+                            'rgba(220, 53, 69, 1)',
+                            '{ "rgba(0, 123, 255, 1)" if balance >= 0 else "rgba(255, 193, 7, 1)" }'
+                        ],
+                        borderWidth: 2,
+                        borderRadius: 8,
+                        borderSkipped: false
+                    }}]
+                }},
+                options: {{
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {{
+                        legend: {{ display: false }},
+                        tooltip: {{
+                            backgroundColor: 'rgba(0,0,0,0.85)',
+                            padding: 12,
+                            titleColor: '#fff',
+                            bodyColor: '#fff',
+                            callbacks: {{
+                                label: function(ctx) {{
+                                    return '$ ' + ctx.parsed.y.toLocaleString('es-CO') + ' COP';
+                                }}
+                            }}
+                        }}
+                    }},
+                    scales: {{
+                        y: {{
+                            beginAtZero: true,
+                            grid: {{ color: 'rgba(0,0,0,0.05)' }},
+                            ticks: {{
+                                callback: function(value) {{
+                                    return '$' + (value/1000000).toFixed(2) + 'M';
+                                }}
+                            }}
+                        }},
+                        x: {{ grid: {{ display: false }} }}
+                    }},
+                    animation: {{
+                        duration: 1000,
+                        easing: 'easeOutQuart'
+                    }}
+                }}
+            }});
+
+            // === GRÁFICO ANIMALES ===
+            const ctxAnim = document.getElementById('graficoAnimales').getContext('2d');
+            new Chart(ctxAnim, {{
+                type: 'doughnut',
+                 {{
+                    labels: ['Bovinos', 'Porcinos', 'Otros'],
+                    datasets: [{{
+                         [{bovinos}, {porcinos}, {otros}],
+                        backgroundColor: [
+                            'rgba(25, 135, 84, 0.9)',
+                            'rgba(13, 110, 253, 0.9)',
+                            'rgba(255, 193, 7, 0.9)'
+                        ],
+                        borderColor: '#fff',
+                        borderWidth: 3,
+                        hoverOffset: 15
+                    }}]
+                }},
+                options: {{
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    cutout: '65%',
+                    plugins: {{
+                        legend: {{
+                            position: 'bottom',
+                            labels: {{
+                                padding: 15,
+                                usePointStyle: true,
+                                pointStyle: 'circle'
+                            }}
+                        }}
+                    }},
+                    animation: {{
+                        animateScale: true,
+                        animateRotate: true
+                    }}
+                }}
+            }});
+            </script>
 
             <div class="footer">
                 🔒 Datos confidenciales. No compartas esta URL.
                 <br>
-                💡 Pronto: opción de exportar a Excel (al migrar a plan pago).
+                💡 Finca Digital © {datetime.date.today().year}
             </div>
         </body>
         </html>
@@ -411,6 +667,92 @@ def reiniciar_bd():
 @app.route("/reporte")
 def descargar_reporte():
     return "🔒 Acceso restringido. Usa 'exportar reporte' desde WhatsApp.", 403
+
+# === RUTA: EXPORTAR DASHBOARD A EXCEL ===
+@app.route("/finca/<clave>/exportar-excel")
+def exportar_finca_excel(clave):
+    try:
+        import pandas as pd
+        from io import BytesIO
+        from flask import send_file
+        
+        database_url = os.environ.get("DATABASE_URL")
+        if not database_url:
+            return "❌ DATABASE_URL no configurada", 500
+
+        with psycopg2.connect(database_url) as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT nombre, id FROM fincas WHERE clave_secreta = %s", (clave,))
+            finca_row = cur.fetchone()
+            if not finca_row:
+                return "❌ Acceso denegado.", 403
+            nombre_finca, finca_id = finca_row
+
+            # Inventario
+            df_animales = pd.read_sql_query("""
+                SELECT especie, marca_o_arete AS marca, categoria, peso, corral
+                FROM animales
+                WHERE finca_id = %s AND estado = 'activo'
+                ORDER BY especie, marca_o_arete
+            """, conn, params=(finca_id,))
+            df_animales['especie'] = df_animales['especie'].apply(
+                lambda x: 'Bovino' if x == 'bovino' else 'Porcino' if x == 'porcino' else x.title()
+            )
+
+            # Movimientos
+            df_registros = pd.read_sql_query("""
+                SELECT fecha, tipo_actividad AS tipo, detalle, lugar, cantidad, valor, observacion
+                FROM registros
+                WHERE finca_id = %s
+                ORDER BY fecha DESC
+                LIMIT 500
+            """, conn, params=(finca_id,))
+
+            # Finanzas
+            hoy = datetime.date.today()
+            inicio_mes = hoy.replace(day=1)
+            cur.execute("""
+                SELECT 
+                    COALESCE(SUM(CASE WHEN tipo_actividad = 'produccion' THEN valor ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN tipo_actividad = 'gasto' THEN valor ELSE 0 END) + 
+                    SUM(CASE WHEN jornales > 0 THEN valor ELSE 0 END), 0)
+                FROM registros
+                WHERE finca_id = %s AND fecha >= %s
+            """, (finca_id, inicio_mes.isoformat()))
+            finanzas = cur.fetchone()
+            cur.close()
+
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df_resumen = pd.DataFrame([{{
+                'Finca': nombre_finca,
+                'Fecha de exportación': hoy.strftime('%d/%m/%Y'),
+                'Ingresos (mes)': f"${finanzas[0]:,.0f} COP",
+                'Gastos (mes)': f"${finanzas[1]:,.0f} COP",
+                'Balance estimado': f"${finanzas[0] - finanzas[1]:,.0f} COP"
+            }}])
+            df_resumen.to_excel(writer, sheet_name='📊 Resumen', index=False)
+            
+            if not df_animales.empty:
+                df_animales.to_excel(writer, sheet_name='🐮🐷 Inventario', index=False)
+            
+            if not df_registros.empty:
+                df_registros.to_excel(writer, sheet_name='📝 Movimientos', index=False)
+
+        output.seek(0)
+        filename = f"Finca_{nombre_finca.replace(' ', '_')}_{hoy.strftime('%Y%m%d')}.xlsx"
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+
+    except ImportError:
+        return "❌ Librerías de Excel no instaladas.", 500
+    except Exception as e:
+        print(f"❌ Error al exportar Excel: {e}")
+        return f"❌ Error: {e}", 500
 
 # === INICIO DEL SERVIDOR ===
 if __name__ == "__main__":
