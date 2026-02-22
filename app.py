@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 app.py - Webhook para WhatsApp + Twilio + Gestión completa de fincas y empleados
-Incluye dashboard web por finca con URL secreta, gráficos 2D y exportación a Excel
+Versión: Dashboard con filtro de fechas, gráficos 2D y exportación a Excel
 """
 
 import os
@@ -195,13 +195,47 @@ def activar_finca_con_empleados():
     except Exception as e:
         return f"❌ Error al activar: {e}", 500
 
-# === RUTA: DASHBOARD POR FINCA (COMPLETO Y CORREGIDO) ===
+# === RUTA: DASHBOARD POR FINCA (COMPLETO CON FILTRO DE FECHAS) ===
 @app.route("/finca/<clave>")
 def dashboard_finca(clave):
     try:
         database_url = os.environ.get("DATABASE_URL")
         if not database_url:
             return "❌ DATABASE_URL no configurada", 500
+
+        hoy = datetime.date.today()
+        
+        # === OBTENER FILTRO DE FECHAS ===
+        fecha_inicio_str = request.args.get("fecha_inicio")
+        fecha_fin_str = request.args.get("fecha_fin")
+
+        if fecha_inicio_str and fecha_fin_str:
+            try:
+                fecha_inicio = datetime.datetime.strptime(fecha_inicio_str, "%Y-%m-%d").date()
+                fecha_fin = datetime.datetime.strptime(fecha_fin_str, "%Y-%m-%d").date()
+                # Validar que sean del año actual
+                if fecha_inicio.year != hoy.year or fecha_fin.year != hoy.year:
+                    periodo_txt = " (fuera de rango - mostrando mes actual)"
+                    fecha_inicio = hoy.replace(day=1)
+                    fecha_fin = hoy
+                elif fecha_inicio > fecha_fin:
+                    periodo_txt = " (fecha inválida - mostrando mes actual)"
+                    fecha_inicio = hoy.replace(day=1)
+                    fecha_fin = hoy
+                else:
+                    periodo_txt = f" ({fecha_inicio.strftime('%d/%m')} al {fecha_fin.strftime('%d/%m')})"
+            except:
+                periodo_txt = " (mes actual)"
+                fecha_inicio = hoy.replace(day=1)
+                fecha_fin = hoy
+        else:
+            # Comportamiento por defecto: mes actual
+            periodo_txt = " (mes actual)"
+            fecha_inicio = hoy.replace(day=1)
+            fecha_fin = hoy
+
+        # Usar parámetros seguros para SQL (prevenir inyección)
+        filtro_fecha_params = (fecha_inicio.isoformat(), fecha_fin.isoformat())
 
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cur:
@@ -211,7 +245,7 @@ def dashboard_finca(clave):
                     return "❌ Acceso denegado. URL inválida.", 403
                 nombre_finca, finca_id = finca_row
 
-                # INVENTARIO
+                # INVENTARIO (sin filtro de fecha - son animales activos)
                 cur.execute("""
                     SELECT especie, marca_o_arete, categoria, peso, corral
                     FROM animales
@@ -232,27 +266,25 @@ def dashboard_finca(clave):
                 porcinos = sum(c for esp, c in animales_por_especie if esp == 'porcino')
                 otros = sum(c for esp, c in animales_por_especie if esp not in ['bovino', 'porcino'])
 
-                # MOVIMIENTOS
+                # MOVIMIENTOS CON FILTRO DE FECHAS
                 cur.execute("""
                     SELECT fecha, tipo_actividad, detalle, lugar, cantidad, valor, observacion
                     FROM registros
-                    WHERE finca_id = %s
+                    WHERE finca_id = %s AND fecha BETWEEN %s AND %s
                     ORDER BY fecha DESC, id DESC
-                    LIMIT 200
-                """, (finca_id,))
+                    LIMIT 500
+                """, (finca_id,) + filtro_fecha_params)
                 registros = cur.fetchall()
 
-                # FINANZAS
-                hoy = datetime.date.today()
-                inicio_mes = hoy.replace(day=1)
+                # FINANZAS CON FILTRO DE FECHAS
                 cur.execute("""
                     SELECT 
                         SUM(CASE WHEN tipo_actividad = 'produccion' THEN valor ELSE 0 END),
                         SUM(CASE WHEN tipo_actividad = 'gasto' THEN valor ELSE 0 END) +
                         SUM(CASE WHEN jornales > 0 THEN valor ELSE 0 END)
                     FROM registros
-                    WHERE finca_id = %s AND fecha >= %s
-                """, (finca_id, inicio_mes.isoformat()))
+                    WHERE finca_id = %s AND fecha BETWEEN %s AND %s
+                """, (finca_id,) + filtro_fecha_params)
                 finanzas = cur.fetchone()
                 ingresos = finanzas[0] or 0
                 gastos = finanzas[1] or 0
@@ -307,6 +339,48 @@ def dashboard_finca(clave):
                 .tarjeta.ingresos .valor {{ color: #28a745; }}
                 .tarjeta.gastos .valor {{ color: #dc3545; }}
                 .tarjeta.balance .valor {{ color: #0d6efd; }}
+                .filtro-fechas {{
+                    background: white;
+                    padding: 20px;
+                    border-radius: 12px;
+                    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+                    margin: 20px 0;
+                }}
+                .filtro-form {{
+                    display: flex;
+                    gap: 15px;
+                    flex-wrap: wrap;
+                    align-items: end;
+                }}
+                .filtro-form label {{
+                    display: block;
+                    font-size: 0.9em;
+                    margin-bottom: 5px;
+                    color: #6c757d;
+                }}
+                .filtro-form input[type="date"] {{
+                    padding: 10px;
+                    border: 1px solid #ddd;
+                    border-radius: 6px;
+                    font-size: 1em;
+                }}
+                .filtro-form button {{
+                    background: #198754;
+                    color: white;
+                    padding: 10px 20px;
+                    border: none;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    font-size: 1em;
+                }}
+                .filtro-form button:hover {{ background: #146c43; }}
+                .btn-limpiar {{
+                    padding: 10px 20px;
+                    color: #6c757d;
+                    text-decoration: none;
+                    border: 1px solid #ddd;
+                    border-radius: 6px;
+                }}
                 .graficos-container {{
                     display: grid;
                     grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
@@ -369,6 +443,7 @@ def dashboard_finca(clave):
                 @media (max-width: 768px) {{
                     .tarjeta .valor {{ font-size: 1.5em; }}
                     .graficos-container {{ grid-template-columns: 1fr; }}
+                    .filtro-form {{ flex-direction: column; align-items: stretch; }}
                     th, td {{ padding: 10px; font-size: 0.9em; }}
                 }}
             </style>
@@ -380,16 +455,33 @@ def dashboard_finca(clave):
                 <a href="/finca/{clave}/exportar-excel" class="btn-export">📥 EXPORTAR A EXCEL</a>
             </div>
             
+            <!-- FILTRO DE FECHAS -->
+            <div class="filtro-fechas">
+                <h3 style="margin-top: 0; color: #2c3e50;">📅 Filtrar por fechas{periodo_txt}</h3>
+                <form method="GET" class="filtro-form">
+                    <div>
+                        <label>Desde:</label>
+                        <input type="date" name="fecha_inicio" value="{fecha_inicio}" min="{hoy.replace(month=1, day=1)}" max="{hoy}">
+                    </div>
+                    <div>
+                        <label>Hasta:</label>
+                        <input type="date" name="fecha_fin" value="{fecha_fin}" min="{hoy.replace(month=1, day=1)}" max="{hoy}">
+                    </div>
+                    <button type="submit">🔍 Filtrar</button>
+                    <a href="/finca/{clave}" class="btn-limpiar">🔄 Limpiar</a>
+                </form>
+            </div>
+            
             <div class="resumen">
                 <div class="tarjeta ingresos">
                     <h3>💰 Ingresos</h3>
                     <div class="valor">${ingresos:,.0f}</div>
-                    <small style="color: #6c757d;">Mes actual</small>
+                    <small style="color: #6c757d;">Periodo seleccionado</small>
                 </div>
                 <div class="tarjeta gastos">
                     <h3>🔴 Gastos</h3>
                     <div class="valor">${gastos:,.0f}</div>
-                    <small style="color: #6c757d;">Mes actual</small>
+                    <small style="color: #6c757d;">Periodo seleccionado</small>
                 </div>
                 <div class="tarjeta balance">
                     <h3>📈 Balance</h3>
@@ -537,6 +629,7 @@ def dashboard_finca(clave):
 
     except Exception as e:
         print(f"❌ Error dashboard: {e}")
+        print(traceback.format_exc())
         return f"❌ Error al cargar el dashboard: {e}", 500
 
 # === RUTA: CONSULTAR MI FINCA_ID ===
@@ -593,6 +686,22 @@ def exportar_finca_excel(clave):
         if not database_url:
             return "❌ DATABASE_URL no configurada", 500
 
+        # Obtener filtro de fechas (mismo que dashboard)
+        fecha_inicio_str = request.args.get("fecha_inicio")
+        fecha_fin_str = request.args.get("fecha_fin")
+        hoy = datetime.date.today()
+        
+        if fecha_inicio_str and fecha_fin_str:
+            try:
+                fecha_inicio = datetime.datetime.strptime(fecha_inicio_str, "%Y-%m-%d").date()
+                fecha_fin = datetime.datetime.strptime(fecha_fin_str, "%Y-%m-%d").date()
+            except:
+                fecha_inicio = hoy.replace(day=1)
+                fecha_fin = hoy
+        else:
+            fecha_inicio = hoy.replace(day=1)
+            fecha_fin = hoy
+
         with psycopg2.connect(database_url) as conn:
             cur = conn.cursor()
             cur.execute("SELECT nombre, id FROM fincas WHERE clave_secreta = %s", (clave,))
@@ -601,6 +710,7 @@ def exportar_finca_excel(clave):
                 return "❌ Acceso denegado.", 403
             nombre_finca, finca_id = finca_row
 
+            # Inventario (sin filtro de fecha)
             df_animales = pd.read_sql_query("""
                 SELECT especie, marca_o_arete AS marca, categoria, peso, corral
                 FROM animales WHERE finca_id = %s AND estado = 'activo'
@@ -610,20 +720,21 @@ def exportar_finca_excel(clave):
                 lambda x: 'Bovino' if x == 'bovino' else 'Porcino' if x == 'porcino' else x.title()
             )
 
+            # Movimientos (CON filtro de fechas)
             df_registros = pd.read_sql_query("""
                 SELECT fecha, tipo_actividad AS tipo, detalle, lugar, cantidad, valor, observacion
-                FROM registros WHERE finca_id = %s ORDER BY fecha DESC LIMIT 500
-            """, conn, params=(finca_id,))
+                FROM registros WHERE finca_id = %s AND fecha BETWEEN %s AND %s
+                ORDER BY fecha DESC LIMIT 500
+            """, conn, params=(finca_id, fecha_inicio.isoformat(), fecha_fin.isoformat()))
 
-            hoy = datetime.date.today()
-            inicio_mes = hoy.replace(day=1)
+            # Finanzas (CON filtro de fechas)
             cur.execute("""
                 SELECT 
                     COALESCE(SUM(CASE WHEN tipo_actividad = 'produccion' THEN valor ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN tipo_actividad = 'gasto' THEN valor ELSE 0 END) + 
                     SUM(CASE WHEN jornales > 0 THEN valor ELSE 0 END), 0)
-                FROM registros WHERE finca_id = %s AND fecha >= %s
-            """, (finca_id, inicio_mes.isoformat()))
+                FROM registros WHERE finca_id = %s AND fecha BETWEEN %s AND %s
+            """, (finca_id, fecha_inicio.isoformat(), fecha_fin.isoformat()))
             finanzas = cur.fetchone()
             cur.close()
 
@@ -631,7 +742,8 @@ def exportar_finca_excel(clave):
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df_resumen = pd.DataFrame([{
                 'Finca': nombre_finca,
-                'Fecha': hoy.strftime('%d/%m/%Y'),
+                'Periodo': f"{fecha_inicio.strftime('%d/%m')} al {fecha_fin.strftime('%d/%m')}",
+                'Fecha exportación': hoy.strftime('%d/%m/%Y'),
                 'Ingresos': f"${finanzas[0]:,.0f} COP",
                 'Gastos': f"${finanzas[1]:,.0f} COP",
                 'Balance': f"${finanzas[0]-finanzas[1]:,.0f} COP"
@@ -650,6 +762,7 @@ def exportar_finca_excel(clave):
     except ImportError:
         return "❌ Librerías Excel no instaladas.", 500
     except Exception as e:
+        print(f"❌ Error exportar Excel: {e}")
         return f"❌ Error: {e}", 500
 
 # === INICIO DEL SERVIDOR ===
