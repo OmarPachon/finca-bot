@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 app.py - Webhook para WhatsApp + Twilio + Gestión completa de fincas y empleados
-Incluye dashboard web por finca con URL secreta e inventario mejorado
+Incluye dashboard web por finca con URL secreta, gráficos 2D y exportación a Excel
 """
 
 import os
@@ -11,7 +11,7 @@ import datetime
 import psycopg2
 import re
 import secrets
-from flask import Flask, request
+from flask import Flask, request, send_file
 from twilio.twiml.messaging_response import MessagingResponse
 
 print("🚀 Iniciando app.py...")
@@ -78,7 +78,7 @@ def webhook():
     print("📤 [WEBHOOK] Enviando respuesta a Twilio")
     return str(r)
 
-# === RUTA: FORMULARIO AMIGABLE PARA ACTIVAR FINCA (uso administrador) ===
+# === RUTA: FORMULARIO AMIGABLE PARA ACTIVAR FINCA ===
 @app.route("/activar")
 def formulario_activacion():
     return '''
@@ -106,12 +106,12 @@ def formulario_activacion():
             </button>
         </form>
         <br>
-        <small style="color: #888;">🔒 Solo para uso del administrador. Los números se convertirán automáticamente a formato WhatsApp.</small>
+        <small style="color: #888;">🔒 Solo para uso del administrador.</small>
     </body>
     </html>
     '''
 
-# === RUTA: ACTIVAR FINCA CON EMPLEADOS (versión mejorada con clave_secreta) ===
+# === RUTA: ACTIVAR FINCA CON EMPLEADOS ===
 @app.route("/activar-finca-con-empleados")
 def activar_finca_con_empleados():
     nombre_finca = request.args.get("nombre", "").strip()
@@ -121,7 +121,6 @@ def activar_finca_con_empleados():
     if not nombre_finca or not telefono_dueno:
         return "❌ Faltan datos: nombre y número del dueño son obligatorios.", 400
 
-    # Función para limpiar y validar un número colombiano
     def formatear_numero(num):
         solo_digitos = re.sub(r'\D', '', num)
         if len(solo_digitos) == 10 and solo_digitos.startswith('3'):
@@ -141,7 +140,7 @@ def activar_finca_con_empleados():
                 if emp_formateado:
                     lista_empleados.append(emp_formateado)
                 else:
-                    return f"❌ Número de empleado inválido: {num}. Usa 10 dígitos (ej: 3101234567).", 400
+                    return f"❌ Número de empleado inválido: {num}.", 400
     
     if len(lista_empleados) > 3:
         return "❌ Máximo 3 empleados permitidos.", 400
@@ -153,10 +152,8 @@ def activar_finca_con_empleados():
 
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cur:
-                # Generar clave secreta única
                 clave_secreta = secrets.token_urlsafe(16)
                 
-                # Crear o actualizar finca (incluyendo clave_secreta)
                 cur.execute("""
                     INSERT INTO fincas (nombre, telefono_dueño, suscripcion_activa, vencimiento_suscripcion, clave_secreta)
                     VALUES (%s, %s, %s, CURRENT_DATE + INTERVAL '30 days', %s)
@@ -168,7 +165,6 @@ def activar_finca_con_empleados():
                 """, (nombre_finca, dueno_formateado, True, clave_secreta))
                 finca_id = cur.fetchone()[0]
 
-                # Registrar dueño
                 cur.execute("""
                     INSERT INTO usuarios (telefono_whatsapp, nombre, rol, finca_id)
                     VALUES (%s, %s, 'dueño', %s)
@@ -176,7 +172,6 @@ def activar_finca_con_empleados():
                     SET finca_id = EXCLUDED.finca_id
                 """, (dueno_formateado, "Dueño", finca_id))
 
-                # Registrar empleados
                 for emp in lista_empleados:
                     cur.execute("""
                         INSERT INTO usuarios (telefono_whatsapp, nombre, rol, finca_id)
@@ -188,7 +183,7 @@ def activar_finca_con_empleados():
                 conn.commit()
         
         empleados_txt = ", ".join(lista_empleados) if lista_empleados else "ninguno"
-        url_dashboard = f"https://finca-bot.onrender.com/finca/{clave_secreta}"  # ← Corregido: sin espacios
+        url_dashboard = f"https://finca-bot.onrender.com/finca/{clave_secreta}"
         return (
             f"✅ Finca '{nombre_finca}' activada con éxito.<br>"
             f"• Dueño: {dueno_formateado}<br>"
@@ -200,7 +195,7 @@ def activar_finca_con_empleados():
     except Exception as e:
         return f"❌ Error al activar: {e}", 500
 
-# === RUTA: DASHBOARD POR FINCA (mejorado con gráficos 2D y inventario) ===
+# === RUTA: DASHBOARD POR FINCA (COMPLETO Y CORREGIDO) ===
 @app.route("/finca/<clave>")
 def dashboard_finca(clave):
     try:
@@ -210,14 +205,13 @@ def dashboard_finca(clave):
 
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cur:
-                # Verificar acceso
                 cur.execute("SELECT nombre, id FROM fincas WHERE clave_secreta = %s", (clave,))
                 finca_row = cur.fetchone()
                 if not finca_row:
                     return "❌ Acceso denegado. URL inválida.", 403
                 nombre_finca, finca_id = finca_row
 
-                # === INVENTARIO DE ANIMALES ===
+                # INVENTARIO
                 cur.execute("""
                     SELECT especie, marca_o_arete, categoria, peso, corral
                     FROM animales
@@ -226,7 +220,7 @@ def dashboard_finca(clave):
                 """, (finca_id,))
                 inventario = cur.fetchall()
 
-                # === CONTAR ANIMALES POR ESPECIE (para gráfico) ===
+                # CONTAR ANIMALES POR ESPECIE
                 cur.execute("""
                     SELECT especie, COUNT(*) 
                     FROM animales 
@@ -238,7 +232,7 @@ def dashboard_finca(clave):
                 porcinos = sum(c for esp, c in animales_por_especie if esp == 'porcino')
                 otros = sum(c for esp, c in animales_por_especie if esp not in ['bovino', 'porcino'])
 
-                # === MOVIMIENTOS RECIENTES ===
+                # MOVIMIENTOS
                 cur.execute("""
                     SELECT fecha, tipo_actividad, detalle, lugar, cantidad, valor, observacion
                     FROM registros
@@ -248,14 +242,14 @@ def dashboard_finca(clave):
                 """, (finca_id,))
                 registros = cur.fetchall()
 
-                # === RESUMEN FINANCIERO DEL MES ACTUAL ===
+                # FINANZAS
                 hoy = datetime.date.today()
                 inicio_mes = hoy.replace(day=1)
                 cur.execute("""
                     SELECT 
-                        SUM(CASE WHEN tipo_actividad = 'produccion' THEN valor ELSE 0 END) AS ingresos,
+                        SUM(CASE WHEN tipo_actividad = 'produccion' THEN valor ELSE 0 END),
                         SUM(CASE WHEN tipo_actividad = 'gasto' THEN valor ELSE 0 END) +
-                        SUM(CASE WHEN jornales > 0 THEN valor ELSE 0 END) AS gastos
+                        SUM(CASE WHEN jornales > 0 THEN valor ELSE 0 END)
                     FROM registros
                     WHERE finca_id = %s AND fecha >= %s
                 """, (finca_id, inicio_mes.isoformat()))
@@ -264,7 +258,7 @@ def dashboard_finca(clave):
                 gastos = finanzas[1] or 0
                 balance = ingresos - gastos
 
-        # === GENERAR HTML ===
+        # GENERAR HTML
         html = f"""
         <!DOCTYPE html>
         <html>
@@ -285,8 +279,6 @@ def dashboard_finca(clave):
                 h1 {{ color: #198754; text-align: center; margin-bottom: 10px; }}
                 h2 {{ color: #198754; font-size: 1.3em; margin-top: 25px; }}
                 h3 {{ color: #2c3e50; font-size: 1.1em; margin: 0 0 15px 0; }}
-                
-                /* TARJETAS FINANCIERAS */
                 .resumen {{ 
                     display: grid; 
                     grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); 
@@ -315,8 +307,6 @@ def dashboard_finca(clave):
                 .tarjeta.ingresos .valor {{ color: #28a745; }}
                 .tarjeta.gastos .valor {{ color: #dc3545; }}
                 .tarjeta.balance .valor {{ color: #0d6efd; }}
-                
-                /* GRÁFICOS */
                 .graficos-container {{
                     display: grid;
                     grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
@@ -329,8 +319,6 @@ def dashboard_finca(clave):
                     border-radius: 12px;
                     box-shadow: 0 4px 15px rgba(0,0,0,0.08);
                 }}
-                
-                /* TABLAS */
                 table {{ 
                     width: 100%; 
                     border-collapse: collapse; 
@@ -352,8 +340,6 @@ def dashboard_finca(clave):
                 }}
                 tr:nth-child(even) {{ background-color: #f8f9fa; }}
                 tr:hover {{ background-color: #e9f7ef; }}
-                
-                /* BOTÓN EXPORTAR */
                 .btn-export {{
                     display: inline-flex;
                     align-items: center;
@@ -372,7 +358,6 @@ def dashboard_finca(clave):
                     transform: translateY(-2px);
                     box-shadow: 0 6px 20px rgba(25, 135, 84, 0.4);
                 }}
-                
                 .footer {{ 
                     margin-top: 40px; 
                     padding: 20px;
@@ -381,8 +366,6 @@ def dashboard_finca(clave):
                     color: #6c757d;
                     border-top: 1px solid #e9ecef;
                 }}
-                
-                /* RESPONSIVE */
                 @media (max-width: 768px) {{
                     .tarjeta .valor {{ font-size: 1.5em; }}
                     .graficos-container {{ grid-template-columns: 1fr; }}
@@ -393,14 +376,10 @@ def dashboard_finca(clave):
         <body>
             <h1>📊 Dashboard - {nombre_finca}</h1>
             
-            <!-- BOTÓN EXPORTAR -->
             <div style="text-align: center;">
-                <a href="/finca/{clave}/exportar-excel" class="btn-export">
-                    📥 EXPORTAR A EXCEL
-                </a>
+                <a href="/finca/{clave}/exportar-excel" class="btn-export">📥 EXPORTAR A EXCEL</a>
             </div>
             
-            <!-- TARJETAS FINANCIERAS -->
             <div class="resumen">
                 <div class="tarjeta ingresos">
                     <h3>💰 Ingresos</h3>
@@ -419,7 +398,6 @@ def dashboard_finca(clave):
                 </div>
             </div>
 
-            <!-- GRÁFICOS 2D -->
             <div class="graficos-container">
                 <div class="grafico-card">
                     <h3>📊 Ingresos vs Gastos</h3>
@@ -431,18 +409,9 @@ def dashboard_finca(clave):
                 </div>
             </div>
 
-            <!-- INVENTARIO -->
             <h2>📋 Inventario de Animales Activos</h2>
             <table>
-                <thead>
-                    <tr>
-                        <th>Especie</th>
-                        <th>Marca</th>
-                        <th>Categoría</th>
-                        <th>Peso (kg)</th>
-                        <th>Corral / Lugar</th>
-                    </tr>
-                </thead>
+                <thead><tr><th>Especie</th><th>Marca</th><th>Categoría</th><th>Peso (kg)</th><th>Corral</th></tr></thead>
                 <tbody>
         """
         
@@ -460,20 +429,9 @@ def dashboard_finca(clave):
                 </tbody>
             </table>
 
-            <!-- MOVIMIENTOS -->
-            <h2>📝 Últimos Movimientos (máx. 200)</h2>
+            <h2>📝 Últimos Movimientos</h2>
             <table>
-                <thead>
-                    <tr>
-                        <th>Fecha</th>
-                        <th>Tipo</th>
-                        <th>Detalle</th>
-                        <th>Lugar</th>
-                        <th>Cantidad</th>
-                        <th>Valor (COP)</th>
-                        <th>Observación</th>
-                    </tr>
-                </thead>
+                <thead><tr><th>Fecha</th><th>Tipo</th><th>Detalle</th><th>Lugar</th><th>Cant.</th><th>Valor</th><th>Obs.</th></tr></thead>
                 <tbody>
         """
         for reg in registros:
@@ -484,30 +442,39 @@ def dashboard_finca(clave):
                 </tbody>
             </table>
 
-            <!-- SCRIPT GRÁFICOS -->
             <script>
-            // === GRÁFICO FINANCIERO ===
+            const datosFinancieros = {{
+                ingresos: {ingresos},
+                gastos: {gastos},
+                balance: {balance}
+            }};
+            const datosAnimales = {{
+                bovinos: {bovinos},
+                porcinos: {porcinos},
+                otros: {otros}
+            }};
+
+            // Gráfico Financiero
             const ctxFin = document.getElementById('graficoFinanciero').getContext('2d');
             new Chart(ctxFin, {{
                 type: 'bar',
-                 {{
+                data: {{
                     labels: ['Ingresos', 'Gastos', 'Balance'],
                     datasets: [{{
                         label: 'COP',
-                         [{ingresos}, {gastos}, {balance}],
+                        data: [datosFinancieros.ingresos, datosFinancieros.gastos, datosFinancieros.balance],
                         backgroundColor: [
                             'rgba(40, 167, 69, 0.85)',
                             'rgba(220, 53, 69, 0.85)',
-                            '{ "rgba(0, 123, 255, 0.85)" if balance >= 0 else "rgba(255, 193, 7, 0.85)" }'
+                            datosFinancieros.balance >= 0 ? 'rgba(0, 123, 255, 0.85)' : 'rgba(255, 193, 7, 0.85)'
                         ],
                         borderColor: [
                             'rgba(40, 167, 69, 1)',
                             'rgba(220, 53, 69, 1)',
-                            '{ "rgba(0, 123, 255, 1)" if balance >= 0 else "rgba(255, 193, 7, 1)" }'
+                            datosFinancieros.balance >= 0 ? 'rgba(0, 123, 255, 1)' : 'rgba(255, 193, 7, 1)'
                         ],
                         borderWidth: 2,
-                        borderRadius: 8,
-                        borderSkipped: false
+                        borderRadius: 8
                     }}]
                 }},
                 options: {{
@@ -517,9 +484,6 @@ def dashboard_finca(clave):
                         legend: {{ display: false }},
                         tooltip: {{
                             backgroundColor: 'rgba(0,0,0,0.85)',
-                            padding: 12,
-                            titleColor: '#fff',
-                            bodyColor: '#fff',
                             callbacks: {{
                                 label: function(ctx) {{
                                     return '$ ' + ctx.parsed.y.toLocaleString('es-CO') + ' COP';
@@ -528,32 +492,20 @@ def dashboard_finca(clave):
                         }}
                     }},
                     scales: {{
-                        y: {{
-                            beginAtZero: true,
-                            grid: {{ color: 'rgba(0,0,0,0.05)' }},
-                            ticks: {{
-                                callback: function(value) {{
-                                    return '$' + (value/1000000).toFixed(2) + 'M';
-                                }}
-                            }}
-                        }},
+                        y: {{ beginAtZero: true, grid: {{ color: 'rgba(0,0,0,0.05)' }} }},
                         x: {{ grid: {{ display: false }} }}
-                    }},
-                    animation: {{
-                        duration: 1000,
-                        easing: 'easeOutQuart'
                     }}
                 }}
             }});
 
-            // === GRÁFICO ANIMALES ===
+            // Gráfico Animales
             const ctxAnim = document.getElementById('graficoAnimales').getContext('2d');
             new Chart(ctxAnim, {{
                 type: 'doughnut',
-                 {{
+                data: {{
                     labels: ['Bovinos', 'Porcinos', 'Otros'],
                     datasets: [{{
-                         [{bovinos}, {porcinos}, {otros}],
+                        data: [datosAnimales.bovinos, datosAnimales.porcinos, datosAnimales.otros],
                         backgroundColor: [
                             'rgba(25, 135, 84, 0.9)',
                             'rgba(13, 110, 253, 0.9)',
@@ -566,39 +518,28 @@ def dashboard_finca(clave):
                 }},
                 options: {{
                     responsive: true,
-                    maintainAspectRatio: true,
                     cutout: '65%',
                     plugins: {{
-                        legend: {{
-                            position: 'bottom',
-                            labels: {{
-                                padding: 15,
-                                usePointStyle: true,
-                                pointStyle: 'circle'
-                            }}
-                        }}
-                    }},
-                    animation: {{
-                        animateScale: true,
-                        animateRotate: true
+                        legend: {{ position: 'bottom', labels: {{ padding: 15, usePointStyle: true }} }}
                     }}
                 }}
             }});
             </script>
 
             <div class="footer">
-                🔒 Datos confidenciales. No compartas esta URL.
-                <br>
+                🔒 Datos confidenciales. No compartas esta URL.<br>
                 💡 Finca Digital © {datetime.date.today().year}
             </div>
         </body>
         </html>
         """
         return html
+
     except Exception as e:
+        print(f"❌ Error dashboard: {e}")
         return f"❌ Error al cargar el dashboard: {e}", 500
 
-# === RUTA: CONSULTAR MI FINCA_ID (para dueños) ===
+# === RUTA: CONSULTAR MI FINCA_ID ===
 @app.route("/mi-finca-id")
 def mi_finca_id():
     telefono = request.args.get("telefono")
@@ -608,73 +549,45 @@ def mi_finca_id():
         database_url = os.environ.get("DATABASE_URL")
         if not database_url:
             return "❌ DATABASE_URL no configurada", 500
-
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT f.id, f.nombre 
-                    FROM fincas f
+                    SELECT f.id, f.nombre FROM fincas f
                     JOIN usuarios u ON f.id = u.finca_id
                     WHERE u.telefono_whatsapp = %s
                 """, (telefono,))
                 row = cur.fetchone()
                 if row:
-                    return (
-                        f"📱 Tu finca: <strong>{row[1]}</strong><br>"
-                        f"🆔 ID: <strong>{row[0]}</strong><br><br>"
-                        "Envía este ID junto con tu comprobante de pago."
-                    ), 200
+                    return f"📱 Tu finca: <strong>{row[1]}</strong><br>🆔 ID: <strong>{row[0]}</strong>", 200
                 else:
                     return "❌ No estás registrado en ninguna finca.", 404
     except Exception as e:
-        return f"❌ Error al consultar finca: {e}", 500
+        return f"❌ Error: {e}", 500
 
-# === RUTA TEMPORAL: REINICIAR BASE DE DATOS ===
+# === RUTA: REINICIAR BD ===
 @app.route("/reiniciar-bd")
 def reiniciar_bd():
     try:
         database_url = os.environ.get("DATABASE_URL")
         if not database_url:
-            return "❌ DATABASE_URL no configurada en Render.", 500
-
+            return "❌ DATABASE_URL no configurada", 500
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cur:
-                cur.execute("""
-                    DROP TABLE IF EXISTS 
-                        registros, 
-                        salud_animal, 
-                        animales, 
-                        usuarios, 
-                        fincas 
-                    CASCADE;
-                """)
+                cur.execute("DROP TABLE IF EXISTS registros, salud_animal, animales, usuarios, fincas CASCADE")
                 conn.commit()
-        
         if bot and hasattr(bot, 'inicializar_bd'):
             if bot.inicializar_bd():
-                return "✅ Base de datos reiniciada completamente.\n¡Ahora puedes registrar tu finca desde WhatsApp!", 200
-            else:
-                return "❌ Falló la inicialización automática de las tablas.", 500
-        else:
-            return "⚠️ El módulo 'bot' no está disponible para reinicializar.", 500
-
+                return "✅ Base de datos reiniciada.", 200
+        return "⚠️ Módulo bot no disponible.", 500
     except Exception as e:
-        error_msg = f"❌ Error al reiniciar BD:\n{type(e).__name__}: {e}\n\n{traceback.format_exc()}"
-        print(error_msg)
-        return error_msg, 500
+        return f"❌ Error: {e}", 500
 
-# === RUTA DE REPORTE (DESACTIVADA) ===
-@app.route("/reporte")
-def descargar_reporte():
-    return "🔒 Acceso restringido. Usa 'exportar reporte' desde WhatsApp.", 403
-
-# === RUTA: EXPORTAR DASHBOARD A EXCEL ===
+# === RUTA: EXPORTAR A EXCEL ===
 @app.route("/finca/<clave>/exportar-excel")
 def exportar_finca_excel(clave):
     try:
         import pandas as pd
         from io import BytesIO
-        from flask import send_file
         
         database_url = os.environ.get("DATABASE_URL")
         if not database_url:
@@ -688,27 +601,20 @@ def exportar_finca_excel(clave):
                 return "❌ Acceso denegado.", 403
             nombre_finca, finca_id = finca_row
 
-            # Inventario
             df_animales = pd.read_sql_query("""
                 SELECT especie, marca_o_arete AS marca, categoria, peso, corral
-                FROM animales
-                WHERE finca_id = %s AND estado = 'activo'
+                FROM animales WHERE finca_id = %s AND estado = 'activo'
                 ORDER BY especie, marca_o_arete
             """, conn, params=(finca_id,))
             df_animales['especie'] = df_animales['especie'].apply(
                 lambda x: 'Bovino' if x == 'bovino' else 'Porcino' if x == 'porcino' else x.title()
             )
 
-            # Movimientos
             df_registros = pd.read_sql_query("""
                 SELECT fecha, tipo_actividad AS tipo, detalle, lugar, cantidad, valor, observacion
-                FROM registros
-                WHERE finca_id = %s
-                ORDER BY fecha DESC
-                LIMIT 500
+                FROM registros WHERE finca_id = %s ORDER BY fecha DESC LIMIT 500
             """, conn, params=(finca_id,))
 
-            # Finanzas
             hoy = datetime.date.today()
             inicio_mes = hoy.replace(day=1)
             cur.execute("""
@@ -716,42 +622,34 @@ def exportar_finca_excel(clave):
                     COALESCE(SUM(CASE WHEN tipo_actividad = 'produccion' THEN valor ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN tipo_actividad = 'gasto' THEN valor ELSE 0 END) + 
                     SUM(CASE WHEN jornales > 0 THEN valor ELSE 0 END), 0)
-                FROM registros
-                WHERE finca_id = %s AND fecha >= %s
+                FROM registros WHERE finca_id = %s AND fecha >= %s
             """, (finca_id, inicio_mes.isoformat()))
             finanzas = cur.fetchone()
             cur.close()
 
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df_resumen = pd.DataFrame([{{
+            df_resumen = pd.DataFrame([{
                 'Finca': nombre_finca,
-                'Fecha de exportación': hoy.strftime('%d/%m/%Y'),
-                'Ingresos (mes)': f"${finanzas[0]:,.0f} COP",
-                'Gastos (mes)': f"${finanzas[1]:,.0f} COP",
-                'Balance estimado': f"${finanzas[0] - finanzas[1]:,.0f} COP"
-            }}])
+                'Fecha': hoy.strftime('%d/%m/%Y'),
+                'Ingresos': f"${finanzas[0]:,.0f} COP",
+                'Gastos': f"${finanzas[1]:,.0f} COP",
+                'Balance': f"${finanzas[0]-finanzas[1]:,.0f} COP"
+            }])
             df_resumen.to_excel(writer, sheet_name='📊 Resumen', index=False)
-            
             if not df_animales.empty:
                 df_animales.to_excel(writer, sheet_name='🐮🐷 Inventario', index=False)
-            
             if not df_registros.empty:
                 df_registros.to_excel(writer, sheet_name='📝 Movimientos', index=False)
 
         output.seek(0)
-        filename = f"Finca_{nombre_finca.replace(' ', '_')}_{hoy.strftime('%Y%m%d')}.xlsx"
-        return send_file(
-            output,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            as_attachment=True,
-            download_name=filename
-        )
+        filename = f"Finca_{nombre_finca.replace(' ','_')}_{hoy.strftime('%Y%m%d')}.xlsx"
+        return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        as_attachment=True, download_name=filename)
 
     except ImportError:
-        return "❌ Librerías de Excel no instaladas.", 500
+        return "❌ Librerías Excel no instaladas.", 500
     except Exception as e:
-        print(f"❌ Error al exportar Excel: {e}")
         return f"❌ Error: {e}", 500
 
 # === INICIO DEL SERVIDOR ===
