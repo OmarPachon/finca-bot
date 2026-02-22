@@ -803,23 +803,38 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
         finca_id = usuario_info["finca_id"]
         usuario_id = usuario_info["id"]
         mensaje_completo = f"{detalle} {lugar} {observacion}".strip()
-        # === MANEJO ESPECIAL DE INGRESO DE ANIMALES ===
+        # === MANEJO ESPECIAL DE INGRESO DE ANIMALES (CORREGIDO) ===
         if tipo == "ingreso_animal":
             if subtipo in ["nacimiento", "compra", "inventario_inicial"]:
-                texto_completo = f"{detalle} {observacion}".lower()
+                # ✅ IMPORTANTE: No convertir a lower hasta después del regex
+                texto_completo = f"{detalle} {observacion}"
                 marcas = []
-                for match in re.finditer(r"marca\s+([a-z0-9-]+)", texto_completo, re.IGNORECASE):
-                    marcas.append(match.group(1).upper()) 
+        
+                # ✅ Regex mejorado: captura letras, números, guiones (case-insensitive)
+                for match in re.finditer(r"marca\s+([A-Za-z0-9-]+)", texto_completo):
+                    marca_capturada = match.group(1).upper()
+                    marcas.append(marca_capturada)
+                    print(f"🔍 Marca detectada: {marca_capturada}")  # ← LOG PARA DEPURAR
+        
+                print(f"📊 Total marcas detectadas: {len(marcas)}")  # ← LOG PARA DEPURAR
+        
+                # Determinar especie
                 especie = "bovino"
                 if any(p in detalle.lower() for p in ["lechón", "cerda", "verraco", "ceba", "cerdo", "chancho"]):
                     especie = "porcino"
                 elif any(p in detalle.lower() for p in ["ternero", "ternera", "toro", "vaca", "novillo", "novilla"]):
                     especie = "bovino"
+        
+                # Registrar cada animal
+                animales_registrados = 0
+                errores_registro = []
+                
                 for marca in marcas:
                     try:
                         prefijo = "C-" if especie == "porcino" else "V-M-"
                         id_externo = f"{prefijo}{marca}"
                         categoria = None
+                        
                         if "lechón" in detalle.lower():
                             categoria = "lechón"
                         elif "cerda" in detalle.lower():
@@ -828,21 +843,26 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
                             categoria = "ternera"
                         elif "ternero" in detalle.lower():
                             categoria = "ternero"
-                        #===EXTRAER PESO ASOCIADO A ESTA MARCA===
+                        elif "toro" in detalle.lower():
+                            categoria = "toro"
+                        elif "vaca" in detalle.lower():
+                            categoria = "vaca"
+                
+                        # Extraer peso asociado a esta marca (si existe)
                         peso_valor = None
-                        # Buscar patrón: "marca G01...peso 250 kg"
-                        pattern = r"marca\s+" + re.escape(marca.lower()) + r".*?peso\s*(\d+(?:\.\d+)?)\s*kg"
+                        pattern = r"marca\s+" + re.escape(marca) + r".*?peso\s*(\d+(?:\.\d+)?)\s*kg"
                         peso_match = re.search(pattern, texto_completo, re.IGNORECASE)
                         if peso_match:
                             peso_valor = float(peso_match.group(1))
+                
                         database_url = os.environ.get("DATABASE_URL")
                         with psycopg2.connect(database_url) as conn:
                             with conn.cursor() as cursor:
                                 cursor.execute('''
-                                    INSERT INTO animales (especie, id_externo, marca_o_arete, categoria, corral, estado,peso, finca_id)
+                                    INSERT INTO animales (especie, id_externo, marca_o_arete, categoria, corral, estado, peso, finca_id)
                                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                                     ON CONFLICT (id_externo) DO UPDATE
-                                    SET peso = EXCLUDED.peso
+                                    SET peso = EXCLUDED.peso, estado = EXCLUDED.estado, categoria = EXCLUDED.categoria
                                 ''', (
                                     especie,
                                     id_externo,
@@ -853,17 +873,41 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
                                     peso_valor,
                                     finca_id
                                 ))
-                            conn.commit()
+                                conn.commit()
+                                animales_registrados += 1
+                                print(f"✅ Animal registrado: {id_externo} ({marca})")
+                        
                     except Exception as e:
+                        errores_registro.append(f"{marca}: {str(e)[:50]}")
                         print(f"❌ Error al registrar animal {marca}: {e}")
+        
+                # Guardar registro de la actividad (siempre, haya marcas o no)
                 guardar_registro(
-                    tipo, 
+                    tipo,
                     subtipo,
-                    detalle, lugar, cantidad, valor, unidad, observacion, jornales,
+                    f"{detalle} ({animales_registrados} animales)",
+                    lugar, cantidad, valor, unidad, observacion, jornales,
                     finca_id=finca_id,
                     usuario_id=usuario_id,
                     mensaje_completo=mensaje_completo
                 )
+        
+                # ✅ MENSAJE DE CONFIRMACIÓN DETALLADO
+                respuesta_final = f"✅ ¡Registrado en {usuario_info['finca_nombre']}!"
+                if animales_registrados > 0:
+                    respuesta_final += f"\n🐮 {animales_registrados} animales guardados en inventario."
+                    respuesta_final += f"\n📋 Marcas: {', '.join(marcas)}"
+                else:
+                    respuesta_final += "\n⚠️ No se detectaron marcas válidas."
+                    respuesta_final += "\n💡 Formato correcto: 'marca LG01, marca LG02'"
+        
+                if errores_registro:
+                    respuesta_final += f"\n❌ Errores: {len(errores_registro)}"
+        
+                if user_key in user_state:
+                    del user_state[user_key]
+        
+                return respuesta_final
         # === MANEJO ESPECIAL DE SANIDAD ANIMAL ===
         elif tipo == "sanidad_animal":
             # Guardar en registros (como siempre)
