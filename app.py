@@ -195,7 +195,7 @@ def activar_finca_con_empleados():
     except Exception as e:
         return f"❌ Error al activar: {e}", 500
 
-# === RUTA: DASHBOARD POR FINCA (COMPLETO CON FILTRO DE FECHAS) ===
+# === RUTA: DASHBOARD POR FINCA (CON TABLA DE SANIDAD ANIMAL) ===
 @app.route("/finca/<clave>")
 def dashboard_finca(clave):
     try:
@@ -213,7 +213,6 @@ def dashboard_finca(clave):
             try:
                 fecha_inicio = datetime.datetime.strptime(fecha_inicio_str, "%Y-%m-%d").date()
                 fecha_fin = datetime.datetime.strptime(fecha_fin_str, "%Y-%m-%d").date()
-                # Validar que sean del año actual
                 if fecha_inicio.year != hoy.year or fecha_fin.year != hoy.year:
                     periodo_txt = " (fuera de rango - mostrando mes actual)"
                     fecha_inicio = hoy.replace(day=1)
@@ -229,12 +228,10 @@ def dashboard_finca(clave):
                 fecha_inicio = hoy.replace(day=1)
                 fecha_fin = hoy
         else:
-            # Comportamiento por defecto: mes actual
             periodo_txt = " (mes actual)"
             fecha_inicio = hoy.replace(day=1)
             fecha_fin = hoy
 
-        # Usar parámetros seguros para SQL (prevenir inyección)
         filtro_fecha_params = (fecha_inicio.isoformat(), fecha_fin.isoformat())
 
         with psycopg2.connect(database_url) as conn:
@@ -245,7 +242,7 @@ def dashboard_finca(clave):
                     return "❌ Acceso denegado. URL inválida.", 403
                 nombre_finca, finca_id = finca_row
 
-                # INVENTARIO (sin filtro de fecha - son animales activos)
+                # === INVENTARIO DE ANIMALES ===
                 cur.execute("""
                     SELECT especie, marca_o_arete, categoria, peso, corral
                     FROM animales
@@ -254,7 +251,7 @@ def dashboard_finca(clave):
                 """, (finca_id,))
                 inventario = cur.fetchall()
 
-                # CONTAR ANIMALES POR ESPECIE
+                # === CONTAR ANIMALES POR ESPECIE ===
                 cur.execute("""
                     SELECT especie, COUNT(*) 
                     FROM animales 
@@ -266,7 +263,30 @@ def dashboard_finca(clave):
                 porcinos = sum(c for esp, c in animales_por_especie if esp == 'porcino')
                 otros = sum(c for esp, c in animales_por_especie if esp not in ['bovino', 'porcino'])
 
-                # MOVIMIENTOS CON FILTRO DE FECHAS
+                # === ESTADO DE SANIDAD POR ANIMAL (NUEVO) ===
+                cur.execute("""
+                SELECT 
+                    a.marca_o_arete,
+                    a.especie,
+                    a.peso,
+                    a.corral,
+                    a.estado,
+                    (SELECT fecha FROM salud_animal sa 
+                     WHERE sa.id_externo = a.id_externo AND sa.tipo = 'vacuna' 
+                     ORDER BY sa.fecha DESC LIMIT 1) AS ultima_vacuna,
+                    (SELECT fecha FROM salud_animal sa 
+                     WHERE sa.id_externo = a.id_externo AND sa.tipo = 'desparasitación' 
+                     ORDER BY sa.fecha DESC LIMIT 1) AS ultima_desparasitacion,
+                    (SELECT fecha FROM salud_animal sa 
+                     WHERE sa.id_externo = a.id_externo AND sa.tipo = 'reproducción' 
+                     ORDER BY sa.fecha DESC LIMIT 1) AS ultima_reproduccion
+                FROM animales a
+                WHERE a.finca_id = %s AND a.estado = 'activo'
+                ORDER BY a.especie, a.marca_o_arete
+                """, (finca_id,))
+                sanidad_animales = cur.fetchall()
+
+                # === MOVIMIENTOS ===
                 cur.execute("""
                     SELECT fecha, tipo_actividad, detalle, lugar, cantidad, valor, observacion
                     FROM registros
@@ -276,7 +296,7 @@ def dashboard_finca(clave):
                 """, (finca_id,) + filtro_fecha_params)
                 registros = cur.fetchall()
 
-                # FINANZAS CON FILTRO DE FECHAS
+                # === FINANZAS ===
                 cur.execute("""
                     SELECT 
                         SUM(CASE WHEN tipo_actividad = 'produccion' THEN valor ELSE 0 END),
@@ -290,7 +310,23 @@ def dashboard_finca(clave):
                 gastos = finanzas[1] or 0
                 balance = ingresos - gastos
 
-        # GENERAR HTML
+        # === FUNCIÓN PARA CALCULAR ESTADO DE SANIDAD ===
+        def calcular_estado_sanidad(fecha_ultima, dias_vencimiento=30):
+            if not fecha_ultima:
+                return "—"
+            try:
+                ultima = datetime.datetime.strptime(fecha_ultima, "%Y-%m-%d").date()
+                dias_desde = (hoy - ultima).days
+                if dias_desde <= dias_vencimiento:
+                    return "✅"
+                elif dias_desde <= dias_vencimiento * 2:
+                    return "⚠️"
+                else:
+                    return "❌"
+            except:
+                return "—"
+
+        # === GENERAR HTML ===
         html = f"""
         <!DOCTYPE html>
         <html>
@@ -303,7 +339,7 @@ def dashboard_finca(clave):
                 * {{ box-sizing: border-box; }}
                 body {{ 
                     font-family: 'Segoe UI', Arial, sans-serif; 
-                    max-width: 1200px; 
+                    max-width: 1400px; 
                     margin: 0 auto; 
                     padding: 20px; 
                     background: #f5f7fa;
@@ -440,11 +476,31 @@ def dashboard_finca(clave):
                     color: #6c757d;
                     border-top: 1px solid #e9ecef;
                 }}
+                .tabla-sanidad {{
+                    overflow-x: auto;
+                    margin: 20px 0;
+                }}
+                .tabla-sanidad table {{
+                    font-size: 0.85em;
+                }}
+                .tabla-sanidad th, .tabla-sanidad td {{
+                    padding: 10px 12px;
+                    white-space: nowrap;
+                }}
+                .leyenda-sanidad {{
+                    background: #f8f9fa;
+                    padding: 15px;
+                    border-radius: 8px;
+                    margin-top: 10px;
+                    font-size: 0.85em;
+                    color: #6c757d;
+                }}
                 @media (max-width: 768px) {{
                     .tarjeta .valor {{ font-size: 1.5em; }}
                     .graficos-container {{ grid-template-columns: 1fr; }}
                     .filtro-form {{ flex-direction: column; align-items: stretch; }}
-                    th, td {{ padding: 10px; font-size: 0.9em; }}
+                    th, td {{ padding: 10px; font-size: 0.85em; }}
+                    .tabla-sanidad table {{ font-size: 0.75em; }}
                 }}
             </style>
         </head>
@@ -472,6 +528,7 @@ def dashboard_finca(clave):
                 </form>
             </div>
             
+            <!-- TARJETAS FINANCIERAS -->
             <div class="resumen">
                 <div class="tarjeta ingresos">
                     <h3>💰 Ingresos</h3>
@@ -490,6 +547,7 @@ def dashboard_finca(clave):
                 </div>
             </div>
 
+            <!-- GRÁFICOS -->
             <div class="graficos-container">
                 <div class="grafico-card">
                     <h3>📊 Ingresos vs Gastos</h3>
@@ -501,6 +559,75 @@ def dashboard_finca(clave):
                 </div>
             </div>
 
+            <!-- TABLA DE SANIDAD ANIMAL (NUEVO) -->
+            <h2>💉 Estado de Sanidad Animal</h2>
+            <div class="tabla-sanidad">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Animal</th>
+                            <th>Especie</th>
+                            <th>Peso</th>
+                            <th>Corral</th>
+                            <th>🧬 Vacuna</th>
+                            <th>🪱 Desparasitación</th>
+                            <th>🤰 Reproducción</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        """
+        
+        for marca, especie, peso, corral, estado, vac, desp, rep in sanidad_animales:
+            especie_txt = "🐮 Bovino" if especie == "bovino" else "🐷 Porcino" if especie == "porcino" else "🦘 Otro"
+            peso_str = f"{peso:.1f} kg" if peso else "—"
+            corral_str = corral or "—"
+            
+            vac_icon = calcular_estado_sanidad(vac)
+            desp_icon = calcular_estado_sanidad(desp)
+            rep_icon = calcular_estado_sanidad(rep, dias_vencimiento=45)
+            
+            estado_general = "🟢" if estado == "activo" else "🔴"
+            
+            vac_fecha = vac if vac else "—"
+            desp_fecha = desp if desp else "—"
+            rep_fecha = rep if rep else "—"
+            
+            html += f"""
+                        <tr>
+                            <td><strong>{marca}</strong></td>
+                            <td>{especie_txt}</td>
+                            <td>{peso_str}</td>
+                            <td>{corral_str}</td>
+                            <td>{vac_icon} {vac_fecha}</td>
+                            <td>{desp_icon} {desp_fecha}</td>
+                            <td>{rep_icon} {rep_fecha}</td>
+                            <td>{estado_general}</td>
+                        </tr>
+            """
+        
+        if not sanidad_animales:
+            html += """
+                        <tr>
+                            <td colspan="8" style="text-align: center; color: #6c757d;">
+                                No hay animales registrados en esta finca
+                            </td>
+                        </tr>
+            """
+
+        html += """
+                    </tbody>
+                </table>
+            </div>
+            <div class="leyenda-sanidad">
+                <strong>Leyenda:</strong> 
+                ✅ Al día (&lt;30 días) • 
+                ⚠️ Próximo (30-60 días) • 
+                ❌ Vencido (&gt;60 días) • 
+                — Sin registro
+            </div>
+
+            <!-- INVENTARIO -->
             <h2>📋 Inventario de Animales Activos</h2>
             <table>
                 <thead><tr><th>Especie</th><th>Marca</th><th>Categoría</th><th>Peso (kg)</th><th>Corral</th></tr></thead>
@@ -521,6 +648,7 @@ def dashboard_finca(clave):
                 </tbody>
             </table>
 
+            <!-- MOVIMIENTOS -->
             <h2>📝 Últimos Movimientos</h2>
             <table>
                 <thead><tr><th>Fecha</th><th>Tipo</th><th>Detalle</th><th>Lugar</th><th>Cant.</th><th>Valor</th><th>Obs.</th></tr></thead>
@@ -534,6 +662,7 @@ def dashboard_finca(clave):
                 </tbody>
             </table>
 
+            <!-- SCRIPT GRÁFICOS -->
             <script>
             const datosFinancieros = {{
                 ingresos: {ingresos},
