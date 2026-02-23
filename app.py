@@ -1335,6 +1335,60 @@ def guardar_manual_datos(clave):
                             conn.commit()
                             animales_registrados += 1
 
+            # === PROCESAR SANIDAD ANIMAL (NUEVO - AGREGAR ESTO) ===
+            if tipo == "sanidad_animal" and observacion:
+                import re
+                
+                # Clasificar tipo de sanidad
+                detalle_lower = detalle.lower()
+                if any(kw in detalle_lower for kw in ["vacuna", "aftosa", "brucelosis"]):
+                    tipo_sanidad = "vacuna"
+                elif any(kw in detalle_lower for kw in ["desparasit", "garrapata", "gusano"]):
+                    tipo_sanidad = "desparasitación"
+                elif any(kw in detalle_lower for kw in ["monta", "insemin", "preñez", "celo", "reproduccion", "reproducción"]):
+                    tipo_sanidad = "reproducción"
+                else:
+                    tipo_sanidad = "sanidad"
+                
+                # Extraer marcas
+                marcas = re.findall(r"marca\s+([a-z0-9-]+)", observacion, re.IGNORECASE)
+                marcas = [m.upper() for m in marcas]
+                
+                if marcas:
+                    # Guardar en salud_animal para cada animal con marca
+                    for marca in marcas:
+                        try:
+                            with psycopg2.connect(database_url) as conn:
+                                with conn.cursor() as cur:
+                                    # Buscar id_externo del animal
+                                    cur.execute("""
+                                        SELECT id_externo FROM animales
+                                        WHERE (marca_o_arete = %s OR id_externo LIKE %s)
+                                        AND finca_id = %s
+                                    """, (marca, f"%{marca}%", finca_id))
+                                    row = cur.fetchone()
+                                    
+                                    if row:
+                                        id_externo = row[0]
+                                        # Insertar en salud_animal
+                                        cur.execute("""
+                                            INSERT INTO salud_animal (id_externo, tipo, tratamiento, fecha, observacion, finca_id)
+                                            VALUES (%s, %s, %s, %s, %s, %s)
+                                        """, (
+                                            id_externo,
+                                            tipo_sanidad,
+                                            detalle,
+                                            datetime.date.today().isoformat(),
+                                            observacion,
+                                            finca_id
+                                        ))
+                                        conn.commit()
+                                        print(f"✅ Sanidad guardada para {marca}: {tipo_sanidad}")
+                                    else:
+                                        print(f"⚠️ Animal {marca} no encontrado")
+                        except Exception as e:
+                            print(f"❌ Error al guardar sanidad para {marca}: {e}")
+
             # === PÁGINA DE ÉXITO ===
             html = f"""
             <!DOCTYPE html>
