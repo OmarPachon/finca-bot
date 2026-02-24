@@ -373,7 +373,7 @@ def dashboard_finca(clave):
                 gastos = finanzas[1] or 0
                 balance = ingresos - gastos
                 
-                # === TEXTO Y COLOR PARA EL BALANCE (CORRECCIÓN: AHORA SÍ, DESPUÉS DE CALCULAR BALANCE) ===
+                # === TEXTO Y COLOR PARA EL BALANCE ===
                 balance_txt = "Positivo" if balance >= 0 else "Negativo"
                 balance_color = "#28a745" if balance >= 0 else "#dc3545"
 
@@ -396,7 +396,7 @@ def dashboard_finca(clave):
             except:
                 return "—"
 
-        # === GENERAR HTML ===
+        # === GENERAR HTML (TODO EN UN F-STRING) ===
         html = f"""
         <!DOCTYPE html>
         <html>
@@ -647,9 +647,11 @@ def dashboard_finca(clave):
                 
                 <!-- MOSTRAR FILTROS ACTIVOS -->
 """
+        # === CORRECCIÓN: Usar f-string para la sección de filtros activos ===
         if filtros_activos_count > 0:
             html += f'<div class="filtros-activos">📌 Filtros activos: <strong>{filtros_activos_count} filtros aplicados</strong></div>'
-        html += """
+        
+        html += f"""
             </div>
             
             <!-- TARJETAS FINANCIERAS -->
@@ -888,7 +890,7 @@ def dashboard_finca(clave):
         print(f"❌ Error dashboard: {e}")
         print(traceback.format_exc())
         return f"❌ Error al cargar el dashboard: {e}", 500
-
+    
 # === RUTA: CONSULTAR MI FINCA_ID ===
 @app.route("/mi-finca-id")
 def mi_finca_id():
