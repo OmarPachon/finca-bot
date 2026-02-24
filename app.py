@@ -211,13 +211,6 @@ def dashboard_finca(clave):
         corral_filter = request.args.get("corral", "")
         tipo_actividad_filter = request.args.get("tipo_actividad", "")
 
-        # === CONTAR FILTROS ACTIVOS (CORRECCIÓN: calcular antes del HTML) ===
-        filtros_activos_count = sum(1 for f in [especie_filter, corral_filter, tipo_actividad_filter] if f)
-
-        # === TEXTO Y COLOR PARA EL BALANCE (CORRECCIÓN) ===
-        balance_txt = "Positivo" if balance >= 0 else "Negativo"
-        balance_color = "#28a745" if balance >= 0 else "#dc3545"
-
         # === PROCESAR FILTRO DE FECHAS ===
         if fecha_inicio_str and fecha_fin_str:
             try:
@@ -379,6 +372,13 @@ def dashboard_finca(clave):
                 ingresos = finanzas[0] or 0
                 gastos = finanzas[1] or 0
                 balance = ingresos - gastos
+                
+                # === TEXTO Y COLOR PARA EL BALANCE (CORRECCIÓN: AHORA SÍ, DESPUÉS DE CALCULAR BALANCE) ===
+                balance_txt = "Positivo" if balance >= 0 else "Negativo"
+                balance_color = "#28a745" if balance >= 0 else "#dc3545"
+
+        # === CONTAR FILTROS ACTIVOS ===
+        filtros_activos_count = sum(1 for f in [especie_filter, corral_filter, tipo_actividad_filter] if f)
 
         # === FUNCIÓN PARA CALCULAR ESTADO DE SANIDAD ===
         def calcular_estado_sanidad(fecha_ultima, dias_vencimiento=30):
@@ -645,7 +645,7 @@ def dashboard_finca(clave):
                     </div>
                 </form>
                 
-                <!-- MOSTRAR FILTROS ACTIVOS (CORREGIDO) -->
+                <!-- MOSTRAR FILTROS ACTIVOS -->
 """
         if filtros_activos_count > 0:
             html += f'<div class="filtros-activos">📌 Filtros activos: <strong>{filtros_activos_count} filtros aplicados</strong></div>'
