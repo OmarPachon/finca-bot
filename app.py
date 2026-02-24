@@ -930,7 +930,7 @@ def reiniciar_bd():
     except Exception as e:
         return f"❌ Error: {e}", 500
 
-# === RUTA: EXPORTAR A EXCEL (CORREGIDO - salida_animal cuenta como ingreso) ===
+# === RUTA: EXPORTAR A EXCEL (CON PESTAÑA DE SANIDAD ANIMAL) ===
 @app.route("/finca/<clave>/exportar-excel")
 def exportar_finca_excel(clave):
     try:
@@ -964,22 +964,39 @@ def exportar_finca_excel(clave):
                 return "❌ Acceso denegado.", 403
             nombre_finca, finca_id = finca_row
 
+            # === 1. INVENTARIO DE ANIMALES (sin filtro de fecha) ===
             df_animales = pd.read_sql_query("""
-                SELECT especie, marca_o_arete AS marca, categoria, peso, corral
-                FROM animales WHERE finca_id = %s AND estado = 'activo'
+                SELECT especie, marca_o_arete AS marca, categoria, peso, corral, estado, fecha_registro
+                FROM animales WHERE finca_id = %s
                 ORDER BY especie, marca_o_arete
             """, conn, params=(finca_id,))
             df_animales['especie'] = df_animales['especie'].apply(
                 lambda x: 'Bovino' if x == 'bovino' else 'Porcino' if x == 'porcino' else x.title()
             )
 
+            # === 2. MOVIMIENTOS (CON filtro de fechas) ===
             df_registros = pd.read_sql_query("""
-                SELECT fecha, tipo_actividad AS tipo, detalle, lugar, cantidad, valor, observacion
+                SELECT fecha, tipo_actividad AS tipo, detalle, lugar, cantidad, valor, observacion, jornales
                 FROM registros WHERE finca_id = %s AND fecha BETWEEN %s AND %s
                 ORDER BY fecha DESC LIMIT 500
             """, conn, params=(finca_id, fecha_inicio.isoformat(), fecha_fin.isoformat()))
 
-            # Finanzas (CORREGIDO - salida_animal cuenta como ingreso)
+            # === 3. SANIDAD ANIMAL (NUEVO - CON filtro de fechas) ===
+            df_sanidad = pd.read_sql_query("""
+                SELECT 
+                    sa.fecha,
+                    sa.tipo,
+                    sa.tratamiento,
+                    a.marca_o_arete AS animal,
+                    a.especie,
+                    sa.observacion
+                FROM salud_animal sa
+                LEFT JOIN animales a ON sa.id_externo = a.id_externo
+                WHERE sa.finca_id = %s AND sa.fecha BETWEEN %s AND %s
+                ORDER BY sa.fecha DESC
+            """, conn, params=(finca_id, fecha_inicio.isoformat(), fecha_fin.isoformat()))
+
+            # === 4. FINANZAS (CON filtro de fechas) ===
             cur.execute("""
                 SELECT
                     COALESCE(SUM(CASE WHEN tipo_actividad IN ('produccion', 'salida_animal') THEN valor ELSE 0 END), 0),
@@ -990,8 +1007,11 @@ def exportar_finca_excel(clave):
             finanzas = cur.fetchone()
             cur.close()
 
+        # === CREAR ARCHIVO EXCEL ===
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            
+            # 📊 Hoja 1: Resumen Financiero
             df_resumen = pd.DataFrame([{
                 'Finca': nombre_finca,
                 'Periodo': f"{fecha_inicio.strftime('%d/%m')} al {fecha_fin.strftime('%d/%m')}",
@@ -1001,10 +1021,18 @@ def exportar_finca_excel(clave):
                 'Balance': f"${finanzas[0]-finanzas[1]:,.0f} COP"
             }])
             df_resumen.to_excel(writer, sheet_name='📊 Resumen', index=False)
+            
+            # 🐮🐷 Hoja 2: Inventario de Animales
             if not df_animales.empty:
                 df_animales.to_excel(writer, sheet_name='🐮🐷 Inventario', index=False)
+            
+            # 📝 Hoja 3: Movimientos/Registros
             if not df_registros.empty:
                 df_registros.to_excel(writer, sheet_name='📝 Movimientos', index=False)
+            
+            # 💉 Hoja 4: Sanidad Animal (NUEVO)
+            if not df_sanidad.empty:
+                df_sanidad.to_excel(writer, sheet_name='💉 Sanidad Animal', index=False)
 
         output.seek(0)
         filename = f"Finca_{nombre_finca.replace(' ','_')}_{hoy.strftime('%Y%m%d')}.xlsx"
@@ -1015,6 +1043,7 @@ def exportar_finca_excel(clave):
         return "❌ Librerías Excel no instaladas.", 500
     except Exception as e:
         print(f"❌ Error exportar Excel: {e}")
+        print(traceback.format_exc())
         return f"❌ Error: {e}", 500
 
 # ============================================================================
