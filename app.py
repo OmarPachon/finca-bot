@@ -41,7 +41,7 @@ else:
 
 app = Flask(__name__)
 
-# === RUTA PRINCIPIAL ===
+# === RUTA PRINCIPAL ===
 @app.route("/")
 def home():
     return "🌱 Finca Digital Bot - Multi-Finca Activo", 200
@@ -194,7 +194,7 @@ def activar_finca_con_empleados():
     except Exception as e:
         return f"❌ Error al activar: {e}", 500
 
-# === RUTA: DASHBOARD POR FINCA (CON TODOS LOS FILTROS) ===
+# === RUTA: DASHBOARD POR FINCA (CON TODOS LOS FILTROS - CORREGIDO) ===
 @app.route("/finca/<clave>")
 def dashboard_finca(clave):
     try:
@@ -352,10 +352,10 @@ def dashboard_finca(clave):
                 cur.execute(movimientos_query, tuple(movimientos_params))
                 registros = cur.fetchall()
 
-                # === FINANZAS (CON FILTRO DE FECHAS Y TIPO) ===
+                # === FINANZAS (CORREGIDO - salida_animal cuenta como ingreso) ===
                 finanzas_query = """
                     SELECT 
-                        SUM(CASE WHEN tipo_actividad = 'produccion' THEN valor ELSE 0 END),
+                        SUM(CASE WHEN tipo_actividad IN ('produccion', 'salida_animal') THEN valor ELSE 0 END),
                         SUM(CASE WHEN tipo_actividad = 'gasto' THEN valor ELSE 0 END) +
                         SUM(CASE WHEN jornales > 0 THEN valor ELSE 0 END)
                     FROM registros
@@ -376,7 +376,7 @@ def dashboard_finca(clave):
         # === CONTAR FILTROS ACTIVOS ===
         filtros_activos_count = sum(1 for f in [especie_filter, corral_filter, tipo_actividad_filter] if f)
 
-        # === TEXTO Y COLOR PARA EL BALANCE ===
+        # === TEXTO Y COLOR PARA EL BALANCE (CORREGIDO - calcular DESPUÉS de finanzas) ===
         balance_txt = "Positivo" if balance >= 0 else "Negativo"
         balance_color = "#28a745" if balance >= 0 else "#dc3545"
 
@@ -930,7 +930,7 @@ def reiniciar_bd():
     except Exception as e:
         return f"❌ Error: {e}", 500
 
-# === RUTA: EXPORTAR A EXCEL ===
+# === RUTA: EXPORTAR A EXCEL (CORREGIDO - salida_animal cuenta como ingreso) ===
 @app.route("/finca/<clave>/exportar-excel")
 def exportar_finca_excel(clave):
     try:
@@ -979,9 +979,10 @@ def exportar_finca_excel(clave):
                 ORDER BY fecha DESC LIMIT 500
             """, conn, params=(finca_id, fecha_inicio.isoformat(), fecha_fin.isoformat()))
 
+            # Finanzas (CORREGIDO - salida_animal cuenta como ingreso)
             cur.execute("""
                 SELECT
-                    COALESCE(SUM(CASE WHEN tipo_actividad = 'produccion' THEN valor ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN tipo_actividad IN ('produccion', 'salida_animal') THEN valor ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN tipo_actividad = 'gasto' THEN valor ELSE 0 END) + 
                     SUM(CASE WHEN jornales > 0 THEN valor ELSE 0 END), 0)
                 FROM registros WHERE finca_id = %s AND fecha BETWEEN %s AND %s

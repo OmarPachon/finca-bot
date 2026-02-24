@@ -1,14 +1,15 @@
 # -*- coding: utf-8 -*-
 """
 bot.py - Sistema de Registro Conversacional Multi-Finca
-Versión FINAL COMERCIAL con reporte entre fechas (año actual)
+Versión FINAL COMERCIAL con reporte entre fechas (año actual) + salida_animal
 """
 import os
 import psycopg2
 import re
 import datetime
 from urllib.parse import urlparse
-print("🔧 Iniciando bot.py (versión con reporte entre fechas)...")
+print("🔧 Iniciando bot.py (versión con salida_animal)...")
+
 # === 1. CONEXIÓN A POSTGRESQL CON MIGRACIÓN AUTOMÁTICA ===
 def inicializar_bd():
     try:
@@ -18,83 +19,90 @@ def inicializar_bd():
             return False
         conn = psycopg2.connect(database_url)
         cursor = conn.cursor()
+        
         # Tablas principales
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS fincas (
-                id SERIAL PRIMARY KEY,
-                nombre VARCHAR(100) UNIQUE NOT NULL,
-                telefono_dueño VARCHAR(25) UNIQUE NOT NULL,
-                suscripcion_activa BOOLEAN DEFAULT FALSE,
-                vencimiento_suscripcion DATE,
-                clave_secreta TEXT UNIQUE
-            )
+        CREATE TABLE IF NOT EXISTS fincas (
+            id SERIAL PRIMARY KEY,
+            nombre VARCHAR(100) UNIQUE NOT NULL,
+            telefono_dueño VARCHAR(25) UNIQUE NOT NULL,
+            suscripcion_activa BOOLEAN DEFAULT FALSE,
+            vencimiento_suscripcion DATE,
+            clave_secreta TEXT UNIQUE
+        )
         ''')
+        
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS usuarios (
-                id SERIAL PRIMARY KEY,
-                telefono_whatsapp VARCHAR(25) UNIQUE NOT NULL,
-                nombre VARCHAR(100),
-                rol VARCHAR(20) NOT NULL CHECK (rol IN ('dueño', 'supervisor', 'trabajador')),
-                finca_id INTEGER NOT NULL REFERENCES fincas(id) ON DELETE CASCADE
-            )
+        CREATE TABLE IF NOT EXISTS usuarios (
+            id SERIAL PRIMARY KEY,
+            telefono_whatsapp VARCHAR(25) UNIQUE NOT NULL,
+            nombre VARCHAR(100),
+            rol VARCHAR(20) NOT NULL CHECK (rol IN ('dueño', 'supervisor', 'trabajador')),
+            finca_id INTEGER NOT NULL REFERENCES fincas(id) ON DELETE CASCADE
+        )
         ''')
+        
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS animales (
-                id SERIAL PRIMARY KEY,
-                especie TEXT NOT NULL,
-                id_externo TEXT UNIQUE NOT NULL,
-                marca_o_arete TEXT NOT NULL,
-                categoria TEXT,
-                peso REAL,
-                corral TEXT,
-                estado TEXT DEFAULT 'activo',
-                observaciones TEXT,
-                fecha_registro DATE DEFAULT CURRENT_DATE,
-                finca_id INTEGER REFERENCES fincas(id) ON DELETE SET NULL
-            )
+        CREATE TABLE IF NOT EXISTS animales (
+            id SERIAL PRIMARY KEY,
+            especie TEXT NOT NULL,
+            id_externo TEXT UNIQUE NOT NULL,
+            marca_o_arete TEXT NOT NULL,
+            categoria TEXT,
+            peso REAL,
+            corral TEXT,
+            estado TEXT DEFAULT 'activo',
+            observaciones TEXT,
+            fecha_registro DATE DEFAULT CURRENT_DATE,
+            finca_id INTEGER REFERENCES fincas(id) ON DELETE SET NULL
+        )
         ''')
+        
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS registros (
-                id SERIAL PRIMARY KEY,
-                fecha TEXT NOT NULL,
-                tipo_actividad TEXT NOT NULL,
-                accion TEXT,
-                detalle TEXT,
-                lugar TEXT,
-                cantidad REAL,
-                valor REAL,
-                unidad TEXT,
-                observacion TEXT,
-                jornales INTEGER,
-                fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                finca_id INTEGER REFERENCES fincas(id) ON DELETE SET NULL,
-                usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL
-            )
+        CREATE TABLE IF NOT EXISTS registros (
+            id SERIAL PRIMARY KEY,
+            fecha TEXT NOT NULL,
+            tipo_actividad TEXT NOT NULL,
+            accion TEXT,
+            detalle TEXT,
+            lugar TEXT,
+            cantidad REAL,
+            valor REAL,
+            unidad TEXT,
+            observacion TEXT,
+            jornales INTEGER,
+            fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            finca_id INTEGER REFERENCES fincas(id) ON DELETE SET NULL,
+            usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL
+        )
         ''')
+        
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS salud_animal (
-                id SERIAL PRIMARY KEY,
-                id_externo TEXT NOT NULL,
-                tipo TEXT NOT NULL,
-                tratamiento TEXT,
-                fecha TEXT NOT NULL,
-                observacion TEXT,
-                finca_id INTEGER REFERENCES fincas(id) ON DELETE SET NULL,
-                FOREIGN KEY (id_externo) REFERENCES animales (id_externo)
-            )
+        CREATE TABLE IF NOT EXISTS salud_animal (
+            id SERIAL PRIMARY KEY,
+            id_externo TEXT NOT NULL,
+            tipo TEXT NOT NULL,
+            tratamiento TEXT,
+            fecha TEXT NOT NULL,
+            observacion TEXT,
+            finca_id INTEGER REFERENCES fincas(id) ON DELETE SET NULL,
+            FOREIGN KEY (id_externo) REFERENCES animales (id_externo)
+        )
         ''')
+        
         # Migración: asegurar columna 'jornales'
         cursor.execute("""
-            DO $$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
-                    WHERE table_name='registros' AND column_name='jornales'
-                ) THEN
-                    ALTER TABLE registros ADD COLUMN jornales INTEGER;
-                END IF;
-            END $$;
+        DO $$
+        BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name='registros' AND column_name='jornales'
+        ) THEN
+            ALTER TABLE registros ADD COLUMN jornales INTEGER;
+        END IF;
+        END $$;
         """)
+        
         conn.commit()
         conn.close()
         print("✅ Base de datos lista (multi-finca + suscripción).")
@@ -102,17 +110,21 @@ def inicializar_bd():
     except Exception as e:
         print(f"❌ Error al conectar con PostgreSQL: {e}")
         return False
+
 try:
     BD_OK = inicializar_bd()
 except Exception as e:
     print(f"❌ Error crítico al inicializar BD: {e}")
     BD_OK = False
+
 # === 2. PALABRAS CLAVE PARA ANIMALES ===
 PORCINO_PALABRAS = ["cerdo", "lechón", "cerda", "verraco", "lechon", "lechones", "cochino"]
 BOVINO_PALABRAS = ["vaca", "toro", "ternero", "ternera", "novillo", "novilla", "buey", "ganado"]
 CATEGORIAS_VALIDAS = ["lechón", "cerda", "verraco", "ceba", "toro", "ternero", "ternera", "novillo", "vaquilla", "engorda", "lechera"]
+
 # === 3. ESTADO DEL USUARIO ===
 user_state = {}
+
 # === 4. FUNCIONES DE SOPORTE ===
 def obtener_usuario_por_whatsapp(telefono):
     try:
@@ -120,10 +132,10 @@ def obtener_usuario_por_whatsapp(telefono):
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT u.id, u.nombre, u.rol, u.finca_id, f.nombre AS finca_nombre, f.suscripcion_activa, f.vencimiento_suscripcion
-                    FROM usuarios u
-                    JOIN fincas f ON u.finca_id = f.id
-                    WHERE u.telefono_whatsapp = %s
+                SELECT u.id, u.nombre, u.rol, u.finca_id, f.nombre AS finca_nombre, f.suscripcion_activa, f.vencimiento_suscripcion
+                FROM usuarios u
+                JOIN fincas f ON u.finca_id = f.id
+                WHERE u.telefono_whatsapp = %s
                 """, (telefono,))
                 row = cursor.fetchone()
                 if row:
@@ -139,6 +151,7 @@ def obtener_usuario_por_whatsapp(telefono):
     except Exception as e:
         print(f"❌ Error al buscar usuario: {e}")
     return None
+
 def registrar_nueva_finca(nombre_finca, remitente):
     try:
         nombre_finca = nombre_finca.strip()
@@ -151,30 +164,30 @@ def registrar_nueva_finca(nombre_finca, remitente):
                 if cursor.fetchone():
                     return "❌ Ya estás registrado en una finca."
                 cursor.execute("""
-                    INSERT INTO fincas (nombre, telefono_dueño, suscripcion_activa, vencimiento_suscripcion)
-                    VALUES (%s, %s, %s, %s)
-                    RETURNING id
+                INSERT INTO fincas (nombre, telefono_dueño, suscripcion_activa, vencimiento_suscripcion)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id
                 """, (nombre_finca, remitente, False, None))
                 finca_id = cursor.fetchone()[0]
                 cursor.execute("""
-                    INSERT INTO usuarios (telefono_whatsapp, nombre, rol, finca_id)
-                    VALUES (%s, %s, 'dueño', %s)
+                INSERT INTO usuarios (telefono_whatsapp, nombre, rol, finca_id)
+                VALUES (%s, %s, 'dueño', %s)
                 """, (remitente, "Dueño", finca_id))
-            conn.commit()
-        return (
-            f"🏡 ¡Finca '{nombre_finca}' registrada!\n"
-            "💳 **Para activarla, debes suscribirte mensualmente.\n"
-            "**Valor:** $100.000 COP/mes\n"
-            "**Incluye:** Tu número (como dueño) + hasta 3 empleados para registrar labores.\n"
-            "**Nequi:** 314 353 9351 (Omar Pachón)\n"
-            "📲 **Al realizar el pago, envía el comprobante y los números de tus empleados:**\n"
-            "- Máximo 3 números de WhatsApp\n"
-            "- *(Tu número ya está registrado como dueño — no lo incluyas)*\n"
-            "- Formato correcto:\n"
-            "  • whatsapp:+573101234567\n"
-            "  • whatsapp:+573119876543\n"
-            "✅ Yo activaré a todos en menos de 1 hora."
-        )
+                conn.commit()
+                return (
+                    f"🏡 ¡Finca '{nombre_finca}' registrada!\n"
+                    "💳 **Para activarla, debes suscribirte mensualmente.**\n"
+                    "**Valor:** $100.000 COP/mes\n"
+                    "**Incluye:** Tu número (como dueño) + hasta 3 empleados para registrar labores.\n"
+                    "**Nequi:** 314 353 9351 (Omar Pachón)\n"
+                    "📲 **Al realizar el pago, envía el comprobante y los números de tus empleados:**\n"
+                    "- Máximo 3 números de WhatsApp\n"
+                    "- *(Tu número ya está registrado como dueño — no lo incluyas)*\n"
+                    "- Formato correcto:\n"
+                    "  • whatsapp:+573101234567\n"
+                    "  • whatsapp:+573119876543\n"
+                    "✅ Yo activaré a todos en menos de 1 hora."
+                )
     except psycopg2.IntegrityError as e:
         if "unique" in str(e).lower() and "nombre" in str(e).lower():
             return "❌ Ya existe una finca con ese nombre. Usa otro."
@@ -182,6 +195,7 @@ def registrar_nueva_finca(nombre_finca, remitente):
     except Exception as e:
         error_msg = str(e)
         return f"❌ ERROR: {error_msg[:120]}"
+
 def extraer_datos_animal(mensaje):
     datos = {"especie": None, "id_externo": None, "marca_o_arete": None, "categoria": None, "corral": None, "peso": None}
     mensaje = mensaje.lower()
@@ -209,6 +223,7 @@ def extraer_datos_animal(mensaje):
     peso = re.search(r"peso\s*(\d+(?:\.\d+)?)\s*(kg|kilo|kilos)", mensaje)
     if peso: datos["peso"] = float(peso.group(1))
     return datos
+
 def actualizar_peso_animal(marca_o_arete, nuevo_peso, finca_id):
     """Actualiza el peso de un animal si existe en la finca."""
     try:
@@ -218,19 +233,19 @@ def actualizar_peso_animal(marca_o_arete, nuevo_peso, finca_id):
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    UPDATE animales 
-                    SET peso = %s 
-                    WHERE (marca_o_arete = %s OR id_externo = %s) 
-                    AND finca_id = %s
+                UPDATE animales
+                SET peso = %s
+                WHERE (marca_o_arete = %s OR id_externo = %s)
+                AND finca_id = %s
                 """, (nuevo_peso, marca_o_arete, marca_o_arete, finca_id))
                 if cursor.rowcount > 0:
                     print(f"✅ Peso actualizado: {marca_o_arete} → {nuevo_peso} kg")
                 else:
                     print(f"ℹ️ No se encontró el animal {marca_o_arete} para actualizar peso.")
-            conn.commit()
+                conn.commit()
     except Exception as e:
         print(f"❌ Error al actualizar peso: {e}")
-# === NUEVA FUNCIÓN: GUARDAR EN SALUD_ANIMAL ===
+
 def guardar_en_salud_animal(id_externo, tipo, tratamiento, observacion, finca_id):
     """Guarda un registro de sanidad en la tabla salud_animal."""
     try:
@@ -241,15 +256,14 @@ def guardar_en_salud_animal(id_externo, tipo, tratamiento, observacion, finca_id
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cursor:
                 cursor.execute('''
-                    INSERT INTO salud_animal (id_externo, tipo, tratamiento, fecha, observacion, finca_id)
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO salud_animal (id_externo, tipo, tratamiento, fecha, observacion, finca_id)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 ''', (id_externo, tipo, tratamiento, fecha, observacion, finca_id))
-            conn.commit()
-        print(f"✅ Sanidad guardada para {id_externo}")
+                conn.commit()
+                print(f"✅ Sanidad guardada para {id_externo}")
     except Exception as e:
         print(f"❌ Error al guardar en salud_animal: {e}")
 
-# === NUEVA FUNCIÓN: INVENTARIO DE ANIMALES ACTIVOS ===
 def generar_inventario_animales(finca_id):
     """Genera un resumen del inventario de animales activos en la finca."""
     try:
@@ -257,65 +271,54 @@ def generar_inventario_animales(finca_id):
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT especie, marca_o_arete, categoria, peso, corral
-                    FROM animales
-                    WHERE finca_id = %s AND estado = 'activo'
-                    ORDER BY especie, marca_o_arete
+                SELECT especie, marca_o_arete, categoria, peso, corral
+                FROM animales
+                WHERE finca_id = %s AND estado = 'activo'
+                ORDER BY especie, marca_o_arete
                 """, (finca_id,))
                 animales = cursor.fetchall()
-        
-        if not animales:
-            return "📋 No hay animales activos registrados en esta finca."
-
-        # Agrupar por especie
-        bovinos = []
-        porcinos = []
-        otros = []
-
-        for esp, marca, cat, peso, corral in animales:
-            linea = f"• {marca}"
-            if cat:
-                linea += f" – {cat}"
-            if peso:
-                linea += f" – {peso} kg"
-            if corral:
-                linea += f" – {corral}"
-            if esp == "bovino":
-                bovinos.append(linea)
-            elif esp == "porcino":
-                porcinos.append(linea)
-            else:
-                otros.append(linea)
-
-        lines = [
-            "📋 INVENTARIO DE ANIMALES ACTIVOS",
-            f"Fecha: {datetime.date.today().strftime('%d/%b/%Y')}",
-            ""
-        ]
-
-        if bovinos:
-            lines.append(f"🐮 BOVINOS ({len(bovinos)})")
-            lines.extend(bovinos)
-            lines.append("")
-
-        if porcinos:
-            lines.append(f"🐷 PORCINOS ({len(porcinos)})")
-            lines.extend(porcinos)
-            lines.append("")
-
-        if otros:
-            lines.append(f"🦘 OTROS ({len(otros)})")
-            lines.extend(otros)
-            lines.append("")
-
-        lines.append(f"✅ Total: {len(animales)} animales activos")
-        return "\n".join(lines)
-
+                if not animales:
+                    return "📋 No hay animales activos registrados en esta finca."
+                bovinos = []
+                porcinos = []
+                otros = []
+                for esp, marca, cat, peso, corral in animales:
+                    linea = f"• {marca}"
+                    if cat:
+                        linea += f" – {cat}"
+                    if peso:
+                        linea += f" – {peso} kg"
+                    if corral:
+                        linea += f" – {corral}"
+                    if esp == "bovino":
+                        bovinos.append(linea)
+                    elif esp == "porcino":
+                        porcinos.append(linea)
+                    else:
+                        otros.append(linea)
+                lines = [
+                    "📋 INVENTARIO DE ANIMALES ACTIVOS",
+                    f"Fecha: {datetime.date.today().strftime('%d/%b/%Y')}",
+                    ""
+                ]
+                if bovinos:
+                    lines.append(f"🐮 BOVINOS ({len(bovinos)})")
+                    lines.extend(bovinos)
+                    lines.append("")
+                if porcinos:
+                    lines.append(f"🐷 PORCINOS ({len(porcinos)})")
+                    lines.extend(porcinos)
+                    lines.append("")
+                if otros:
+                    lines.append(f"🦘 OTROS ({len(otros)})")
+                    lines.extend(otros)
+                    lines.append("")
+                lines.append(f"✅ Total: {len(animales)} animales activos")
+                return "\n".join(lines)
     except Exception as e:
         print(f"❌ Error al generar inventario: {e}")
         return "❌ No se pudo cargar el inventario de animales."
 
-# === FUNCIÓN CORRECTAMENTE SEPARADA: GUARDAR REGISTRO ===
 def guardar_registro(tipo_actividad, accion, detalle, lugar=None, cantidad=None, valor=0, unidad=None, observacion=None, jornales=None, finca_id=None, usuario_id=None, mensaje_completo=None):
     print(f"🔍 GUARDANDO REGISTRO en finca {finca_id}: {tipo_actividad} | {detalle}")
     try:
@@ -327,20 +330,20 @@ def guardar_registro(tipo_actividad, accion, detalle, lugar=None, cantidad=None,
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cursor:
                 cursor.execute('''
-                    INSERT INTO registros (fecha, tipo_actividad, accion, detalle, lugar, cantidad, valor, unidad, observacion, jornales, fecha_registro, finca_id, usuario_id)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO registros (fecha, tipo_actividad, accion, detalle, lugar, cantidad, valor, unidad, observacion, jornales, fecha_registro, finca_id, usuario_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ''', (fecha, tipo_actividad, accion, detalle, lugar, cantidad, valor, unidad, observacion, jornales, datetime.datetime.now().isoformat(), finca_id, usuario_id))
-            conn.commit()
-        print(f"✅ REGISTRO GUARDADO en finca {finca_id}")
-        # === EXTRAER PESO Y MARCA DE CUALQUIER MENSAJE ===
-        if mensaje_completo and finca_id:
-            peso_match = re.search(r"peso\s*(\d+(?:\.\d+)?)\s*(?:kg|kilo|kilos)", mensaje_completo, re.IGNORECASE)
-            if peso_match:
-                nuevo_peso = float(peso_match.group(1))
-                marca_match = re.search(r"(?:marca|arete|chapeta)\s+([a-z0-9-]+)", mensaje_completo, re.IGNORECASE)
-                if marca_match:
-                    marca_o_arete = marca_match.group(1).upper()
-                    actualizar_peso_animal(marca_o_arete, nuevo_peso, finca_id)
+                conn.commit()
+                print(f"✅ REGISTRO GUARDADO en finca {finca_id}")
+                # === EXTRAER PESO Y MARCA DE CUALQUIER MENSAJE ===
+                if mensaje_completo and finca_id:
+                    peso_match = re.search(r"peso\s*(\d+(?:\.\d+)?)\s*(?:kg|kilo|kilos)", mensaje_completo, re.IGNORECASE)
+                    if peso_match:
+                        nuevo_peso = float(peso_match.group(1))
+                        marca_match = re.search(r"(?:marca|arete|chapeta)\s+([a-z0-9-]+)", mensaje_completo, re.IGNORECASE)
+                        if marca_match:
+                            marca_o_arete = marca_match.group(1).upper()
+                            actualizar_peso_animal(marca_o_arete, nuevo_peso, finca_id)
     except Exception as e:
         print(f"❌ ERROR AL GUARDAR REGISTRO: {e}")
         import traceback
@@ -359,15 +362,16 @@ def generar_reporte(frecuencia="semanal", formato="texto", finca_id=None):
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT fecha, tipo_actividad, accion, detalle, lugar, cantidad, valor, unidad, observacion, jornales
-                    FROM registros 
-                    WHERE fecha >= %s AND finca_id = %s 
-                    ORDER BY fecha, tipo_actividad
+                SELECT fecha, tipo_actividad, accion, detalle, lugar, cantidad, valor, unidad, observacion, jornales
+                FROM registros
+                WHERE fecha >= %s AND finca_id = %s
+                ORDER BY fecha, tipo_actividad
                 """, (inicio.isoformat(), finca_id))
                 registros = cursor.fetchall()
-        print(f"📊 Reporte cargado: {len(registros)} registros desde {inicio} (finca {finca_id})")
+                print(f"📊 Reporte cargado: {len(registros)} registros desde {inicio} (finca {finca_id})")
     except Exception as e:
         return f"❌ Error al leer la base de datos: {e}"
+    
     if formato == "texto":
         lines = [f"📅 REPORTE {frecuencia.upper()}", periodo, ""]
         total_ingresos = 0
@@ -392,7 +396,6 @@ def generar_reporte(frecuencia="semanal", formato="texto", finca_id=None):
         balance = total_ingresos - total_gastos - total_jornales_valor
         lines.append(f"• Balance estimado: ${balance:,.0f}")
         lines.append("")
-        # PRODUCCIÓN
         if produccion_total:
             vegetal = []
             animal = []
@@ -422,7 +425,6 @@ def generar_reporte(frecuencia="semanal", formato="texto", finca_id=None):
                     if row[8]: desc += f". Obs: {row[8]}"
                     lines.append(desc)
                 lines.append("")
-        # GASTOS
         if gastos:
             lines.append("💰 GASTOS")
             for row in gastos:
@@ -441,13 +443,11 @@ def generar_reporte(frecuencia="semanal", formato="texto", finca_id=None):
                 lines.append(desc)
             if total_gastos > 0:
                 lines.append(f"→ **TOTAL GASTOS: ${total_gastos:,.0f}**")
-            lines.append("")
-        # JORNALES
+                lines.append("")
         if total_jornales_valor > 0:
             lines.append("👷 COSTO TOTAL DE JORNALES")
             lines.append(f"→ **${total_jornales_valor:,.0f}**")
             lines.append("")
-        # OTRAS ACTIVIDADES
         otras_actividades = [r for r in registros if r[1] not in ["produccion", "gasto"]]
         if otras_actividades:
             lines.append("📝 OTRAS ACTIVIDADES")
@@ -466,7 +466,7 @@ def generar_reporte(frecuencia="semanal", formato="texto", finca_id=None):
         lines.append("✅ Todo bajo control. ¡Buen trabajo!")
         return "\n".join(lines)
     return registros
-# === NUEVA FUNCIÓN: REPORTE PERSONALIZADO (AÑO ACTUAL) ===
+
 def generar_reporte_personalizado(fecha_inicio, fecha_fin, finca_id=None):
     if finca_id is None:
         return "❌ No se puede generar reporte sin finca."
@@ -475,13 +475,13 @@ def generar_reporte_personalizado(fecha_inicio, fecha_fin, finca_id=None):
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT fecha, tipo_actividad, accion, detalle, lugar, cantidad, valor, unidad, observacion, jornales
-                    FROM registros 
-                    WHERE fecha BETWEEN %s AND %s AND finca_id = %s 
-                    ORDER BY fecha
+                SELECT fecha, tipo_actividad, accion, detalle, lugar, cantidad, valor, unidad, observacion, jornales
+                FROM registros
+                WHERE fecha BETWEEN %s AND %s AND finca_id = %s
+                ORDER BY fecha
                 """, (fecha_inicio.isoformat(), fecha_fin.isoformat(), finca_id))
                 registros = cursor.fetchall()
-        print(f"📊 Reporte personalizado: {len(registros)} registros del {fecha_inicio} al {fecha_fin}")
+                print(f"📊 Reporte personalizado: {len(registros)} registros del {fecha_inicio} al {fecha_fin}")
     except Exception as e:
         return f"❌ Error al leer la base de datos: {e}"
     if not registros:
@@ -513,7 +513,6 @@ def generar_reporte_personalizado(fecha_inicio, fecha_fin, finca_id=None):
     balance = total_ingresos - total_gastos - total_jornales_valor
     lines.append(f"• Balance estimado: ${balance:,.0f}")
     lines.append("")
-    # PRODUCCIÓN
     if produccion_total:
         vegetal = []
         animal = []
@@ -543,7 +542,6 @@ def generar_reporte_personalizado(fecha_inicio, fecha_fin, finca_id=None):
                 if row[8]: desc += f". Obs: {row[8]}"
                 lines.append(desc)
             lines.append("")
-    # GASTOS
     if gastos:
         lines.append("💰 GASTOS")
         for row in gastos:
@@ -562,13 +560,11 @@ def generar_reporte_personalizado(fecha_inicio, fecha_fin, finca_id=None):
             lines.append(desc)
         if total_gastos > 0:
             lines.append(f"→ **TOTAL GASTOS: ${total_gastos:,.0f}**")
-        lines.append("")
-    # JORNALES
+            lines.append("")
     if total_jornales_valor > 0:
         lines.append("👷 COSTO TOTAL DE JORNALES")
         lines.append(f"→ **${total_jornales_valor:,.0f}**")
         lines.append("")
-    # OTRAS ACTIVIDADES
     otras_actividades = [r for r in registros if r[1] not in ["produccion", "gasto"]]
     if otras_actividades:
         lines.append("📝 OTRAS ACTIVIDADES")
@@ -586,42 +582,44 @@ def generar_reporte_personalizado(fecha_inicio, fecha_fin, finca_id=None):
         lines.append("")
     lines.append("✅ Todo bajo control. ¡Buen trabajo!")
     return "\n".join(lines)
+
 def vaciar_tablas():
     try:
         database_url = os.environ.get("DATABASE_URL")
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cursor:
                 cursor.execute('''
-                    TRUNCATE TABLE registros, animales, salud_animal 
-                    RESTART IDENTITY CASCADE;
+                TRUNCATE TABLE registros, animales, salud_animal
+                RESTART IDENTITY CASCADE;
                 ''')
-            conn.commit()
-        return "✅ Base de datos limpiada. Todo listo para empezar de nuevo."
+                conn.commit()
+                return "✅ Base de datos limpiada. Todo listo para empezar de nuevo."
     except Exception as e:
         print(f"❌ Error al limpiar BD: {e}")
         return "❌ No se pudo limpiar la base de datos."
+
 def consultar_estado_animal(arete):
     try:
         database_url = os.environ.get("DATABASE_URL")
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT especie, estado, peso, corral, fecha_registro, observaciones
-                    FROM animales WHERE id_externo = %s OR marca_o_arete = %s
+                SELECT especie, estado, peso, corral, fecha_registro, observaciones
+                FROM animales WHERE id_externo = %s OR marca_o_arete = %s
                 """, (arete.strip().upper(), arete.strip().upper()))
                 row = cursor.fetchone()
                 if not row:
                     return f"❌ No encontré ningún animal con marca o arete '{arete}'."
                 especie, estado, peso, corral, fecha_reg, obs = row
                 cursor.execute("""
-                    SELECT tipo, tratamiento, fecha, observacion
-                    FROM salud_animal 
-                    WHERE id_externo = (
-                        SELECT id_externo FROM animales 
-                        WHERE marca_o_arete = %s OR id_externo = %s
-                        LIMIT 1
-                    )
-                    ORDER BY fecha DESC
+                SELECT tipo, tratamiento, fecha, observacion
+                FROM salud_animal
+                WHERE id_externo = (
+                    SELECT id_externo FROM animales
+                    WHERE marca_o_arete = %s OR id_externo = %s
+                    LIMIT 1
+                )
+                ORDER BY fecha DESC
                 """, (arete.strip().upper(), arete.strip().upper()))
                 historial = cursor.fetchall()
                 icono = "🐮" if especie == "bovino" else "🐷" if especie == "porcino" else "🦘"
@@ -647,6 +645,7 @@ def consultar_estado_animal(arete):
                 return "\n".join(respuesta)
     except Exception as e:
         return "❌ Error al consultar el animal. Inténtalo más tarde."
+
 # === 5. FLUJO CONVERSACIONAL COMPLETO ===
 def iniciar_flujo_conversacional_existente(mensaje, user_key, state):
     msg = mensaje.strip().lower()
@@ -776,6 +775,7 @@ def iniciar_flujo_conversacional_existente(mensaje, user_key, state):
         state["completed"] = True
         return "¡Listo para guardar!"
     return "❌ Error interno. Intenta de nuevo."
+
 def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
     user_key = usuario_info["id"]
     if user_key not in user_state:
@@ -803,38 +803,29 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
         finca_id = usuario_info["finca_id"]
         usuario_id = usuario_info["id"]
         mensaje_completo = f"{detalle} {lugar} {observacion}".strip()
-        # === MANEJO ESPECIAL DE INGRESO DE ANIMALES (CORREGIDO) ===
+        
+        # === MANEJO ESPECIAL DE INGRESO DE ANIMALES ===
         if tipo == "ingreso_animal":
             if subtipo in ["nacimiento", "compra", "inventario_inicial"]:
-                # ✅ IMPORTANTE: No convertir a lower hasta después del regex
                 texto_completo = f"{detalle} {observacion}"
                 marcas = []
-        
-                # ✅ Regex mejorado: captura letras, números, guiones (case-insensitive)
                 for match in re.finditer(r"marca\s+([A-Za-z0-9-]+)", texto_completo):
                     marca_capturada = match.group(1).upper()
                     marcas.append(marca_capturada)
-                    print(f"🔍 Marca detectada: {marca_capturada}")  # ← LOG PARA DEPURAR
-        
-                print(f"📊 Total marcas detectadas: {len(marcas)}")  # ← LOG PARA DEPURAR
-        
-                # Determinar especie
+                    print(f"🔍 Marca detectada: {marca_capturada}")
+                print(f"📊 Total marcas detectadas: {len(marcas)}")
                 especie = "bovino"
                 if any(p in detalle.lower() for p in ["lechón", "cerda", "verraco", "ceba", "cerdo", "chancho"]):
                     especie = "porcino"
                 elif any(p in detalle.lower() for p in ["ternero", "ternera", "toro", "vaca", "novillo", "novilla"]):
                     especie = "bovino"
-        
-                # Registrar cada animal
                 animales_registrados = 0
                 errores_registro = []
-                
                 for marca in marcas:
                     try:
                         prefijo = "C-" if especie == "porcino" else "V-M-"
                         id_externo = f"{prefijo}{marca}"
                         categoria = None
-                        
                         if "lechón" in detalle.lower():
                             categoria = "lechón"
                         elif "cerda" in detalle.lower():
@@ -847,22 +838,19 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
                             categoria = "toro"
                         elif "vaca" in detalle.lower():
                             categoria = "vaca"
-                
-                        # Extraer peso asociado a esta marca (si existe)
                         peso_valor = None
                         pattern = r"marca\s+" + re.escape(marca) + r".*?peso\s*(\d+(?:\.\d+)?)\s*kg"
                         peso_match = re.search(pattern, texto_completo, re.IGNORECASE)
                         if peso_match:
                             peso_valor = float(peso_match.group(1))
-                
                         database_url = os.environ.get("DATABASE_URL")
                         with psycopg2.connect(database_url) as conn:
                             with conn.cursor() as cursor:
                                 cursor.execute('''
-                                    INSERT INTO animales (especie, id_externo, marca_o_arete, categoria, corral, estado, peso, finca_id)
-                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                                    ON CONFLICT (id_externo) DO UPDATE
-                                    SET peso = EXCLUDED.peso, estado = EXCLUDED.estado, categoria = EXCLUDED.categoria
+                                INSERT INTO animales (especie, id_externo, marca_o_arete, categoria, corral, estado, peso, finca_id)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                ON CONFLICT (id_externo) DO UPDATE
+                                SET peso = EXCLUDED.peso, estado = EXCLUDED.estado, categoria = EXCLUDED.categoria
                                 ''', (
                                     especie,
                                     id_externo,
@@ -876,12 +864,9 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
                                 conn.commit()
                                 animales_registrados += 1
                                 print(f"✅ Animal registrado: {id_externo} ({marca})")
-                        
                     except Exception as e:
                         errores_registro.append(f"{marca}: {str(e)[:50]}")
                         print(f"❌ Error al registrar animal {marca}: {e}")
-        
-                # Guardar registro de la actividad (siempre, haya marcas o no)
                 guardar_registro(
                     tipo,
                     subtipo,
@@ -891,8 +876,6 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
                     usuario_id=usuario_id,
                     mensaje_completo=mensaje_completo
                 )
-        
-                # ✅ MENSAJE DE CONFIRMACIÓN DETALLADO
                 respuesta_final = f"✅ ¡Registrado en {usuario_info['finca_nombre']}!"
                 if animales_registrados > 0:
                     respuesta_final += f"\n🐮 {animales_registrados} animales guardados en inventario."
@@ -900,17 +883,85 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
                 else:
                     respuesta_final += "\n⚠️ No se detectaron marcas válidas."
                     respuesta_final += "\n💡 Formato correcto: 'marca LG01, marca LG02'"
-        
                 if errores_registro:
                     respuesta_final += f"\n❌ Errores: {len(errores_registro)}"
-        
                 if user_key in user_state:
                     del user_state[user_key]
-        
                 return respuesta_final
+        
+        # === MANEJO ESPECIAL DE SALIDA DE ANIMALES (NUEVO - CORREGIDO) ===
+        elif tipo == "salida_animal":
+            if subtipo in ["venta", "muerte"]:
+                texto_completo = f"{detalle} {observacion}"
+                marcas = []
+                for match in re.finditer(r"marca\s+([A-Za-z0-9-]+)", texto_completo):
+                    marca_capturada = match.group(1).upper()
+                    marcas.append(marca_capturada)
+                    print(f"🔍 Marca detectada para venta: {marca_capturada}")
+                print(f"📊 Total marcas para venta: {len(marcas)}")
+                
+                animales_vendidos = 0
+                errores_venta = []
+                for marca in marcas:
+                    try:
+                        database_url = os.environ.get("DATABASE_URL")
+                        with psycopg2.connect(database_url) as conn:
+                            with conn.cursor() as cursor:
+                                # Buscar el animal
+                                cursor.execute("""
+                                SELECT id_externo FROM animales
+                                WHERE (marca_o_arete = %s OR id_externo LIKE %s)
+                                AND finca_id = %s
+                                AND estado = 'activo'
+                                """, (marca, f"%{marca}%", finca_id))
+                                row = cursor.fetchone()
+                                
+                                if row:
+                                    id_externo = row[0]
+                                    # Actualizar estado a 'vendido'
+                                    cursor.execute("""
+                                    UPDATE animales 
+                                    SET estado = 'vendido',
+                                        observaciones = %s
+                                    WHERE id_externo = %s
+                                    """, (f"Vendido: {detalle} - {observacion}", id_externo))
+                                    conn.commit()
+                                    animales_vendidos += 1
+                                    print(f"✅ Animal {marca} marcado como vendido")
+                                else:
+                                    errores_venta.append(f"{marca}: no encontrado o ya vendido")
+                                    print(f"⚠️ Animal {marca} no encontrado o ya está vendido")
+                    except Exception as e:
+                        errores_venta.append(f"{marca}: {str(e)[:50]}")
+                        print(f"❌ Error al actualizar venta para {marca}: {e}")
+                
+                # Guardar registro de la actividad (siempre, haya marcas o no)
+                guardar_registro(
+                    tipo,
+                    subtipo,
+                    f"{detalle} ({animales_vendidos} animales)",
+                    lugar, cantidad, valor, unidad, observacion, jornales,
+                    finca_id=finca_id,
+                    usuario_id=usuario_id,
+                    mensaje_completo=mensaje_completo
+                )
+                
+                # ✅ MENSAJE DE CONFIRMACIÓN DETALLADO
+                respuesta_final = f"✅ ¡Registrado en {usuario_info['finca_nombre']}!"
+                if animales_vendidos > 0:
+                    respuesta_final += f"\n💸 {animales_vendidos} animales marcados como vendidos."
+                    respuesta_final += f"\n📋 Marcas: {', '.join(marcas)}"
+                else:
+                    respuesta_final += "\n⚠️ No se detectaron marcas válidas."
+                    respuesta_final += "\n💡 Formato correcto: 'marca LG01, marca LG02'"
+                if errores_venta:
+                    respuesta_final += f"\n❌ Errores: {len(errores_venta)}"
+                if user_key in user_state:
+                    del user_state[user_key]
+                return respuesta_final
+        
         # === MANEJO ESPECIAL DE SANIDAD ANIMAL ===
         elif tipo == "sanidad_animal":
-            # Guardar en registros (como siempre)
             guardar_registro(
                 tipo, tipo,
                 detalle, lugar, cantidad, valor, unidad, observacion, jornales,
@@ -918,40 +969,30 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
                 usuario_id=usuario_id,
                 mensaje_completo=mensaje_completo
             )
-            # EXTRA: guardar en salud_animal
-                        # EXTRA: guardar en salud_animal
             texto = mensaje_completo.lower()
-            # Extraer TODAS las marcas mencionadas
             marcas_encontradas = re.findall(r"marca\s+([a-z0-9-]+)", texto, re.IGNORECASE)
             marcas_encontradas = [m.upper() for m in marcas_encontradas]
-
-            # Extraer pares marca-peso (si existen)
             parejas = {}
             for match in re.finditer(r"marca\s+([a-z0-9-]+)\s+(?:peso\s+(\d+(?:\.\d+)?)\s*kg)?", texto, re.IGNORECASE):
                 marca = match.group(1).upper()
                 peso = float(match.group(2)) if match.group(2) else None
                 parejas[marca] = peso
-
-            # Si no hay pares pero hay marcas, usar marcas solas con peso=None
             if not parejas and marcas_encontradas:
                 for marca in marcas_encontradas:
                     parejas[marca] = None
-
-            # Registrar cada animal en salud_animal y actualizar peso
             for marca, peso in parejas.items():
                 try:
                     database_url = os.environ.get("DATABASE_URL")
                     with psycopg2.connect(database_url) as conn:
                         with conn.cursor() as cursor:
                             cursor.execute("""
-                                SELECT id_externo FROM animales 
-                                WHERE (marca_o_arete = %s OR id_externo LIKE %s) 
-                                AND finca_id = %s
+                            SELECT id_externo FROM animales
+                            WHERE (marca_o_arete = %s OR id_externo LIKE %s)
+                            AND finca_id = %s
                             """, (marca, f"%{marca}%", finca_id))
                             row = cursor.fetchone()
                             if row:
                                 id_externo = row[0]
-                                # === CLASIFICAR EL TIPO DE EVENTO ===
                                 detalle_lower = detalle.lower()
                                 if any(kw in detalle_lower for kw in ["vacuna", "aftosa", "brucelosis"]):
                                     tipo_sanidad = "vacuna"
@@ -962,24 +1003,30 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
                                 else:
                                     tipo_sanidad = "sanidad"
                                 guardar_en_salud_animal(id_externo, tipo_sanidad, detalle, observacion, finca_id)
-                                # Actualizar peso si se proporcionó
                                 if peso is not None:
                                     actualizar_peso_animal(marca, peso, finca_id)
                 except Exception as e:
                     print(f"❌ Error al registrar sanidad para {marca}: {e}")
+            if user_key in user_state:
+                del user_state[user_key]
+            return f"✅ ¡Registrado en {usuario_info['finca_nombre']}! {detalle}"
+        
+        # === OTROS TIPOS DE REGISTRO ===
         else:
             guardar_registro(
-                tipo, 
+                tipo,
                 subtipo if tipo in ["ingreso_animal", "salida_animal"] else tipo,
                 detalle, lugar, cantidad, valor, unidad, observacion, jornales,
                 finca_id=finca_id,
                 usuario_id=usuario_id,
                 mensaje_completo=mensaje_completo
             )
-        if user_key in user_state:
-            del user_state[user_key]
-        return f"✅ ¡Registrado en {usuario_info['finca_nombre']}! {detalle}"
+            if user_key in user_state:
+                del user_state[user_key]
+            return f"✅ ¡Registrado en {usuario_info['finca_nombre']}! {detalle}"
+    
     return respuesta
+
 # === 6. ENTRADA PRINCIPAL: VALIDACIÓN DE VENCIMIENTO AUTOMÁTICO ===
 def procesar_mensaje_whatsapp(mensaje, remitente=None):
     print(f"🔍 [BOT] Procesando mensaje: '{mensaje}' de {remitente}")
@@ -1017,9 +1064,7 @@ def procesar_mensaje_whatsapp(mensaje, remitente=None):
             "**Nequi:** 314 353 9351 (Omar Pachón)\n"
             "Envía comprobante para reactivar tu finca."
         )
-    # === NUEVO: SOPORTE PARA REPORTE ENTRE FECHAS ===
     if "reporte" in mensaje.lower():
-        # Buscar rango de fechas: "reporte del 01/12 al 10/12"
         rango = re.search(r"reporte.*?del\s+(\d{1,2})/(\d{1,2})\s+al\s+(\d{1,2})/(\d{1,2})", mensaje.lower())
         if rango:
             try:
@@ -1032,7 +1077,6 @@ def procesar_mensaje_whatsapp(mensaje, remitente=None):
                 return generar_reporte_personalizado(fecha_inicio, fecha_fin, finca_id=usuario_info["finca_id"])
             except Exception as e:
                 print(f"❌ Error al parsear fechas: {e}")
-        # Si no hay rango, usar frecuencia predefinida
         freq = "semanal"
         if "diario" in mensaje.lower(): freq = "diario"
         elif "mensual" in mensaje.lower(): freq = "mensual"
