@@ -194,7 +194,7 @@ def activar_finca_con_empleados():
     except Exception as e:
         return f"❌ Error al activar: {e}", 500
 
-# === RUTA: DASHBOARD POR FINCA (CON TABLA DE SANIDAD ANIMAL) ===
+# === RUTA: DASHBOARD POR FINCA (CON TODOS LOS FILTROS) ===
 @app.route("/finca/<clave>")
 def dashboard_finca(clave):
     try:
@@ -204,10 +204,14 @@ def dashboard_finca(clave):
 
         hoy = datetime.date.today()
         
-        # === OBTENER FILTRO DE FECHAS ===
+        # === OBTENER TODOS LOS FILTROS ===
         fecha_inicio_str = request.args.get("fecha_inicio")
         fecha_fin_str = request.args.get("fecha_fin")
+        especie_filter = request.args.get("especie", "")
+        corral_filter = request.args.get("corral", "")
+        tipo_actividad_filter = request.args.get("tipo_actividad", "")
 
+        # === PROCESAR FILTRO DE FECHAS ===
         if fecha_inicio_str and fecha_fin_str:
             try:
                 fecha_inicio = datetime.datetime.strptime(fecha_inicio_str, "%Y-%m-%d").date()
@@ -241,13 +245,47 @@ def dashboard_finca(clave):
                     return "❌ Acceso denegado. URL inválida.", 403
                 nombre_finca, finca_id = finca_row
 
-                # === INVENTARIO DE ANIMALES ===
+                # === OBTENER VALORES ÚNICOS PARA LOS FILTROS (DROPDOWNS) ===
                 cur.execute("""
+                    SELECT DISTINCT especie FROM animales 
+                    WHERE finca_id = %s AND estado = 'activo'
+                    ORDER BY especie
+                """, (finca_id,))
+                especies_disponibles = [row[0] for row in cur.fetchall()]
+
+                cur.execute("""
+                    SELECT DISTINCT corral FROM animales 
+                    WHERE finca_id = %s AND estado = 'activo' AND corral IS NOT NULL
+                    ORDER BY corral
+                """, (finca_id,))
+                corrales_disponibles = [row[0] for row in cur.fetchall()]
+
+                cur.execute("""
+                    SELECT DISTINCT tipo_actividad FROM registros 
+                    WHERE finca_id = %s
+                    ORDER BY tipo_actividad
+                """, (finca_id,))
+                tipos_actividad_disponibles = [row[0] for row in cur.fetchall()]
+
+                # === INVENTARIO DE ANIMALES (CON FILTROS) ===
+                inventario_query = """
                     SELECT especie, marca_o_arete, categoria, peso, corral
                     FROM animales
                     WHERE finca_id = %s AND estado = 'activo'
-                    ORDER BY especie, marca_o_arete
-                """, (finca_id,))
+                """
+                inventario_params = [finca_id]
+                
+                if especie_filter:
+                    inventario_query += " AND especie = %s"
+                    inventario_params.append(especie_filter)
+                
+                if corral_filter:
+                    inventario_query += " AND corral = %s"
+                    inventario_params.append(corral_filter)
+                
+                inventario_query += " ORDER BY especie, marca_o_arete"
+                
+                cur.execute(inventario_query, tuple(inventario_params))
                 inventario = cur.fetchall()
 
                 # === CONTAR ANIMALES POR ESPECIE ===
@@ -262,8 +300,8 @@ def dashboard_finca(clave):
                 porcinos = sum(c for esp, c in animales_por_especie if esp == 'porcino')
                 otros = sum(c for esp, c in animales_por_especie if esp not in ['bovino', 'porcino'])
 
-                # === ESTADO DE SANIDAD POR ANIMAL (MEJORADO) ===
-                cur.execute("""
+                # === ESTADO DE SANIDAD POR ANIMAL (CON FILTROS) ===
+                sanidad_query = """
                 SELECT 
                     a.marca_o_arete,
                     a.especie,
@@ -281,29 +319,55 @@ def dashboard_finca(clave):
                      ORDER BY sa.fecha DESC LIMIT 1) AS ultima_reproduccion
                 FROM animales a
                 WHERE a.finca_id = %s AND a.estado = 'activo'
-                ORDER BY a.especie, a.marca_o_arete
-                """, (finca_id,))
+                """
+                sanidad_params = [finca_id]
+                
+                if especie_filter:
+                    sanidad_query += " AND a.especie = %s"
+                    sanidad_params.append(especie_filter)
+                
+                if corral_filter:
+                    sanidad_query += " AND a.corral = %s"
+                    sanidad_params.append(corral_filter)
+                
+                sanidad_query += " ORDER BY a.especie, a.marca_o_arete"
+                
+                cur.execute(sanidad_query, tuple(sanidad_params))
                 sanidad_animales = cur.fetchall()
 
-                # === MOVIMIENTOS ===
-                cur.execute("""
+                # === MOVIMIENTOS (CON FILTROS) ===
+                movimientos_query = """
                     SELECT fecha, tipo_actividad, detalle, lugar, cantidad, valor, observacion
                     FROM registros
                     WHERE finca_id = %s AND fecha BETWEEN %s AND %s
-                    ORDER BY fecha DESC, id DESC
-                    LIMIT 500
-                """, (finca_id,) + filtro_fecha_params)
+                """
+                movimientos_params = [finca_id, fecha_inicio.isoformat(), fecha_fin.isoformat()]
+                
+                if tipo_actividad_filter:
+                    movimientos_query += " AND tipo_actividad = %s"
+                    movimientos_params.append(tipo_actividad_filter)
+                
+                movimientos_query += " ORDER BY fecha DESC, id DESC LIMIT 500"
+                
+                cur.execute(movimientos_query, tuple(movimientos_params))
                 registros = cur.fetchall()
 
-                # === FINANZAS ===
-                cur.execute("""
+                # === FINANZAS (CON FILTRO DE FECHAS Y TIPO) ===
+                finanzas_query = """
                     SELECT 
                         SUM(CASE WHEN tipo_actividad = 'produccion' THEN valor ELSE 0 END),
                         SUM(CASE WHEN tipo_actividad = 'gasto' THEN valor ELSE 0 END) +
                         SUM(CASE WHEN jornales > 0 THEN valor ELSE 0 END)
                     FROM registros
                     WHERE finca_id = %s AND fecha BETWEEN %s AND %s
-                """, (finca_id,) + filtro_fecha_params)
+                """
+                finanzas_params = [finca_id, fecha_inicio.isoformat(), fecha_fin.isoformat()]
+                
+                if tipo_actividad_filter:
+                    finanzas_query += " AND tipo_actividad = %s"
+                    finanzas_params.append(tipo_actividad_filter)
+                
+                cur.execute(finanzas_query, tuple(finanzas_params))
                 finanzas = cur.fetchone()
                 ingresos = finanzas[0] or 0
                 gastos = finanzas[1] or 0
@@ -382,9 +446,9 @@ def dashboard_finca(clave):
                     margin: 20px 0;
                 }}
                 .filtro-form {{
-                    display: flex;
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
                     gap: 15px;
-                    flex-wrap: wrap;
                     align-items: end;
                 }}
                 .filtro-form label {{
@@ -393,11 +457,13 @@ def dashboard_finca(clave):
                     margin-bottom: 5px;
                     color: #6c757d;
                 }}
-                .filtro-form input[type="date"] {{
+                .filtro-form input[type="date"],
+                .filtro-form select {{
                     padding: 10px;
                     border: 1px solid #ddd;
                     border-radius: 6px;
                     font-size: 1em;
+                    width: 100%;
                 }}
                 .filtro-form button {{
                     background: #198754;
@@ -407,6 +473,7 @@ def dashboard_finca(clave):
                     border-radius: 6px;
                     cursor: pointer;
                     font-size: 1em;
+                    white-space: nowrap;
                 }}
                 .filtro-form button:hover {{ background: #146c43; }}
                 .btn-limpiar {{
@@ -415,6 +482,13 @@ def dashboard_finca(clave):
                     text-decoration: none;
                     border: 1px solid #ddd;
                     border-radius: 6px;
+                    text-align: center;
+                    display: block;
+                }}
+                .btn-limpiar:hover {{
+                    background: #f8f9fa;
+                    color: #198754;
+                    border-color: #198754;
                 }}
                 .graficos-container {{
                     display: grid;
@@ -494,10 +568,22 @@ def dashboard_finca(clave):
                     font-size: 0.85em;
                     color: #6c757d;
                 }}
+                .filtros-activos {{
+                    background: #e9f7ef;
+                    border: 1px solid #28a745;
+                    padding: 10px 15px;
+                    border-radius: 6px;
+                    margin: 15px 0;
+                    font-size: 0.9em;
+                    color: #155724;
+                }}
+                .filtros-activos strong {{
+                    color: #198754;
+                }}
                 @media (max-width: 768px) {{
                     .tarjeta .valor {{ font-size: 1.5em; }}
                     .graficos-container {{ grid-template-columns: 1fr; }}
-                    .filtro-form {{ flex-direction: column; align-items: stretch; }}
+                    .filtro-form {{ grid-template-columns: 1fr; }}
                     th, td {{ padding: 10px; font-size: 0.85em; }}
                     .tabla-sanidad table {{ font-size: 0.75em; }}
                 }}
@@ -510,21 +596,50 @@ def dashboard_finca(clave):
                 <a href="/finca/{clave}/exportar-excel" class="btn-export">📥 EXPORTAR A EXCEL</a>
             </div>
             
-            <!-- FILTRO DE FECHAS -->
+            <!-- FILTROS COMBINADOS -->
             <div class="filtro-fechas">
-                <h3 style="margin-top: 0; color: #2c3e50;">📅 Filtrar por fechas{periodo_txt}</h3>
+                <h3 style="margin-top: 0; color: #2c3e50;">🔍 Filtros del Dashboard{periodo_txt}</h3>
                 <form method="GET" class="filtro-form">
                     <div>
-                        <label>Desde:</label>
+                        <label>📅 Desde:</label>
                         <input type="date" name="fecha_inicio" value="{fecha_inicio}" min="{hoy.replace(month=1, day=1)}" max="{hoy}">
                     </div>
                     <div>
-                        <label>Hasta:</label>
+                        <label>📅 Hasta:</label>
                         <input type="date" name="fecha_fin" value="{fecha_fin}" min="{hoy.replace(month=1, day=1)}" max="{hoy}">
                     </div>
-                    <button type="submit">🔍 Filtrar</button>
-                    <a href="/finca/{clave}" class="btn-limpiar">🔄 Limpiar</a>
+                    <div>
+                        <label>🐮 Especie:</label>
+                        <select name="especie">
+                            <option value="">Todas</option>
+                            <option value="bovino" {"selected" if especie_filter == "bovino" else ""}>Bovinos</option>
+                            <option value="porcino" {"selected" if especie_filter == "porcino" else ""}>Porcinos</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>🏠 Corral:</label>
+                        <select name="corral">
+                            <option value="">Todos</option>
+                            {"".join(f'<option value="{c}" {"selected" if corral_filter == c else ""}>{c}</option>' for c in corrales_disponibles)}
+                        </select>
+                    </div>
+                    <div>
+                        <label>📝 Actividad:</label>
+                        <select name="tipo_actividad">
+                            <option value="">Todas</option>
+                            {"".join(f'<option value="{t}" {"selected" if tipo_actividad_filter == t else ""}>{t.replace("_", " ").title()}</option>' for t in tipos_actividad_disponibles)}
+                        </select>
+                    </div>
+                    <div>
+                        <button type="submit">🔍 Filtrar</button>
+                    </div>
+                    <div>
+                        <a href="/finca/{clave}" class="btn-limpiar">🔄 Limpiar</a>
+                    </div>
                 </form>
+                
+                <!-- MOSTRAR FILTROS ACTIVOS -->
+                {f'<div class="filtros-activos">📌 Filtros activos: <strong>{sum(1 for f in [especie_filter, corral_filter, tipo_actividad_filter] if f)]} filtros aplicados</strong></div>' if any([especie_filter, corral_filter, tipo_actividad_filter]) else ''}
             </div>
             
             <!-- TARJETAS FINANCIERAS -->
@@ -558,7 +673,7 @@ def dashboard_finca(clave):
                 </div>
             </div>
 
-            <!-- TABLA DE SANIDAD ANIMAL (ACTUALIZADA) -->
+            <!-- TABLA DE SANIDAD ANIMAL -->
             <h2>💉 Estado de Sanidad Animal</h2>
             <div class="tabla-sanidad">
                 <table>
@@ -582,7 +697,6 @@ def dashboard_finca(clave):
             peso_str = f"{peso:.1f} kg" if peso else "—"
             corral_str = corral or "—"
             
-            # Extraer fecha para calcular indicador (antes del " | ")
             vac_fecha = vac.split(' | ')[0] if vac and ' | ' in vac else vac
             desp_fecha = desp.split(' | ')[0] if desp and ' | ' in desp else desp
             rep_fecha = rep.split(' | ')[0] if rep and ' | ' in rep else rep
@@ -593,7 +707,6 @@ def dashboard_finca(clave):
             
             estado_general = "🟢" if estado == "activo" else "🔴"
             
-            # Mostrar fecha + tratamiento (o solo — si no hay)
             vac_txt = vac if vac else "—"
             desp_txt = desp if desp else "—"
             rep_txt = rep if rep else "—"
@@ -615,7 +728,7 @@ def dashboard_finca(clave):
             html += """
                         <tr>
                             <td colspan="8" style="text-align: center; color: #6c757d;">
-                                No hay animales registrados en esta finca
+                                No hay animales registrados con estos filtros
                             </td>
                         </tr>
             """
@@ -630,8 +743,6 @@ def dashboard_finca(clave):
                 ⚠️ Próximo (30-60 días) • 
                 ❌ Vencido (&gt;60 días) • 
                 — Sin registro
-                <br><br>
-                <strong>Nota:</strong> Se muestra la última aplicación de cada tipo con el nombre del tratamiento.
             </div>
 
             <!-- INVENTARIO -->
@@ -649,7 +760,7 @@ def dashboard_finca(clave):
                 corral_str = corral or "—"
                 html += f"<tr><td>{especie_txt}</td><td>{marca}</td><td>{cat_str}</td><td>{peso_str}</td><td>{corral_str}</td></tr>"
         else:
-            html += "<tr><td colspan='5'>No hay animales registrados</td></tr>"
+            html += "<tr><td colspan='5'>No hay animales registrados con estos filtros</td></tr>"
 
         html += """
                 </tbody>
