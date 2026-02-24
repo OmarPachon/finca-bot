@@ -194,7 +194,7 @@ def activar_finca_con_empleados():
     except Exception as e:
         return f"❌ Error al activar: {e}", 500
 
-# === RUTA: DASHBOARD POR FINCA (CON TODOS LOS FILTROS) ===
+# === RUTA: DASHBOARD POR FINCA (CON TODOS LOS FILTROS - CORREGIDO) ===
 @app.route("/finca/<clave>")
 def dashboard_finca(clave):
     try:
@@ -210,6 +210,9 @@ def dashboard_finca(clave):
         especie_filter = request.args.get("especie", "")
         corral_filter = request.args.get("corral", "")
         tipo_actividad_filter = request.args.get("tipo_actividad", "")
+
+        # === CONTAR FILTROS ACTIVOS (CORRECCIÓN: calcular antes del HTML) ===
+        filtros_activos_count = sum(1 for f in [especie_filter, corral_filter, tipo_actividad_filter] if f)
 
         # === PROCESAR FILTRO DE FECHAS ===
         if fecha_inicio_str and fecha_fin_str:
@@ -638,8 +641,11 @@ def dashboard_finca(clave):
                     </div>
                 </form>
                 
-                <!-- MOSTRAR FILTROS ACTIVOS -->
-                {f'<div class="filtros-activos">📌 Filtros activos: <strong>{sum(1 for f in [especie_filter, corral_filter, tipo_actividad_filter] if f)]} filtros aplicados</strong></div>' if any([especie_filter, corral_filter, tipo_actividad_filter]) else ''}
+                <!-- MOSTRAR FILTROS ACTIVOS (CORREGIDO) -->
+"""
+        if filtros_activos_count > 0:
+            html += f'<div class="filtros-activos">📌 Filtros activos: <strong>{filtros_activos_count} filtros aplicados</strong></div>'
+        html += """
             </div>
             
             <!-- TARJETAS FINANCIERAS -->
