@@ -3,7 +3,6 @@
 app.py - Webhook para WhatsApp + Twilio + Gestión completa de fincas y empleados
 Versión: Dashboard con filtro de fechas, gráficos 2D y exportación a Excel
 """
-
 import os
 import sys
 import traceback
@@ -271,18 +270,15 @@ def dashboard_finca(clave):
                     a.peso,
                     a.corral,
                     a.estado,
-                    -- Última vacuna (fecha + tratamiento)
                     (SELECT sa.fecha || ' | ' || sa.tratamiento FROM salud_animal sa 
-                    WHERE sa.id_externo = a.id_externo AND sa.tipo = 'vacuna' 
-                    ORDER BY sa.fecha DESC LIMIT 1) AS ultima_vacuna,
-                    -- Última desparasitación
+                     WHERE sa.id_externo = a.id_externo AND sa.tipo = 'vacuna' 
+                     ORDER BY sa.fecha DESC LIMIT 1) AS ultima_vacuna,
                     (SELECT sa.fecha || ' | ' || sa.tratamiento FROM salud_animal sa 
-                    WHERE sa.id_externo = a.id_externo AND sa.tipo = 'desparasitación' 
-                    ORDER BY sa.fecha DESC LIMIT 1) AS ultima_desparasitacion,
-                    -- Último evento reproductivo
+                     WHERE sa.id_externo = a.id_externo AND sa.tipo = 'desparasitación' 
+                     ORDER BY sa.fecha DESC LIMIT 1) AS ultima_desparasitacion,
                     (SELECT sa.fecha || ' | ' || sa.tratamiento FROM salud_animal sa 
-                    WHERE sa.id_externo = a.id_externo AND sa.tipo = 'reproducción' 
-                    ORDER BY sa.fecha DESC LIMIT 1) AS ultima_reproduccion
+                     WHERE sa.id_externo = a.id_externo AND sa.tipo = 'reproducción' 
+                     ORDER BY sa.fecha DESC LIMIT 1) AS ultima_reproduccion
                 FROM animales a
                 WHERE a.finca_id = %s AND a.estado = 'activo'
                 ORDER BY a.especie, a.marca_o_arete
@@ -579,64 +575,64 @@ def dashboard_finca(clave):
                         </tr>
                     </thead>
                     <tbody>
+        """
+        
+        for marca, especie, peso, corral, estado, vac, desp, rep in sanidad_animales:
+            especie_txt = "🐮 Bovino" if especie == "bovino" else "🐷 Porcino" if especie == "porcino" else "🦘 Otro"
+            peso_str = f"{peso:.1f} kg" if peso else "—"
+            corral_str = corral or "—"
+            
+            # Extraer fecha para calcular indicador (antes del " | ")
+            vac_fecha = vac.split(' | ')[0] if vac and ' | ' in vac else vac
+            desp_fecha = desp.split(' | ')[0] if desp and ' | ' in desp else desp
+            rep_fecha = rep.split(' | ')[0] if rep and ' | ' in rep else rep
+            
+            vac_icon = calcular_estado_sanidad(vac_fecha)
+            desp_icon = calcular_estado_sanidad(desp_fecha)
+            rep_icon = calcular_estado_sanidad(rep_fecha, dias_vencimiento=45)
+            
+            estado_general = "🟢" if estado == "activo" else "🔴"
+            
+            # Mostrar fecha + tratamiento (o solo — si no hay)
+            vac_txt = vac if vac else "—"
+            desp_txt = desp if desp else "—"
+            rep_txt = rep if rep else "—"
+            
+            html += f"""
+                        <tr>
+                            <td><strong>{marca}</strong></td>
+                            <td>{especie_txt}</td>
+                            <td>{peso_str}</td>
+                            <td>{corral_str}</td>
+                            <td>{vac_icon} <small style="color: #6c757d;">{vac_txt}</small></td>
+                            <td>{desp_icon} <small style="color: #6c757d;">{desp_txt}</small></td>
+                            <td>{rep_icon} <small style="color: #6c757d;">{rep_txt}</small></td>
+                            <td>{estado_general}</td>
+                        </tr>
+            """
+        
+        if not sanidad_animales:
+            html += """
+                        <tr>
+                            <td colspan="8" style="text-align: center; color: #6c757d;">
+                                No hay animales registrados en esta finca
+                            </td>
+                        </tr>
             """
 
-            for marca, especie, peso, corral, estado, vac, desp, rep in sanidad_animales:
-                especie_txt = "🐮 Bovino" if especie == "bovino" else "🐷 Porcino" if especie == "porcino" else "🦘 Otro"
-                peso_str = f"{peso:.1f} kg" if peso else "—"
-                corral_str = corral or "—"
-                
-                # Extraer fecha para calcular indicador (antes del " | ")
-                vac_fecha = vac.split(' | ')[0] if vac and ' | ' in vac else vac
-                desp_fecha = desp.split(' | ')[0] if desp and ' | ' in desp else desp
-                rep_fecha = rep.split(' | ')[0] if rep and ' | ' in rep else rep
-                
-                vac_icon = calcular_estado_sanidad(vac_fecha)
-                desp_icon = calcular_estado_sanidad(desp_fecha)
-                rep_icon = calcular_estado_sanidad(rep_fecha, dias_vencimiento=45)
-                
-                estado_general = "🟢" if estado == "activo" else "🔴"
-                
-                # Mostrar fecha + tratamiento (o solo — si no hay)
-                vac_txt = vac if vac else "—"
-                desp_txt = desp if desp else "—"
-                rep_txt = rep if rep else "—"
-                
-                html += f"""
-                            <tr>
-                                <td><strong>{marca}</strong></td>
-                                <td>{especie_txt}</td>
-                                <td>{peso_str}</td>
-                                <td>{corral_str}</td>
-                                <td>{vac_icon} <small style="color: #6c757d;">{vac_txt}</small></td>
-                                <td>{desp_icon} <small style="color: #6c757d;">{desp_txt}</small></td>
-                                <td>{rep_icon} <small style="color: #6c757d;">{rep_txt}</small></td>
-                                <td>{estado_general}</td>
-                            </tr>
-                """
-
-            if not sanidad_animales:
-                html += """
-                            <tr>
-                                <td colspan="8" style="text-align: center; color: #6c757d;">
-                                    No hay animales registrados en esta finca
-                                </td>
-                            </tr>
-                """
-
-            html += """
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="leyenda-sanidad">
-                        <strong>Leyenda:</strong> 
-                        ✅ Al día (&lt;30 días) • 
-                        ⚠️ Próximo (30-60 días) • 
-                        ❌ Vencido (&gt;60 días) • 
-                        — Sin registro
-                        <br><br>
-                        <strong>Nota:</strong> Se muestra la última aplicación de cada tipo con el nombre del tratamiento.
-                    </div>
+        html += """
+                    </tbody>
+                </table>
+            </div>
+            <div class="leyenda-sanidad">
+                <strong>Leyenda:</strong> 
+                ✅ Al día (&lt;30 días) • 
+                ⚠️ Próximo (30-60 días) • 
+                ❌ Vencido (&gt;60 días) • 
+                — Sin registro
+                <br><br>
+                <strong>Nota:</strong> Se muestra la última aplicación de cada tipo con el nombre del tratamiento.
+            </div>
 
             <!-- INVENTARIO -->
             <h2>📋 Inventario de Animales Activos</h2>
@@ -1346,7 +1342,7 @@ def guardar_manual_datos(clave):
                             conn.commit()
                             animales_registrados += 1
 
-            # === PROCESAR SANIDAD ANIMAL (NUEVO - AGREGAR ESTO) ===
+            # === PROCESAR SANIDAD ANIMAL (NUEVO) ===
             if tipo == "sanidad_animal" and observacion:
                 import re
                 
