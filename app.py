@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 app.py - Webhook para WhatsApp + Twilio + Gestión completa de fincas y empleados
-Versión: Dashboard con filtro de fechas, gráficos 2D y exportación a Excel
+Versión: Dashboard con filtros, gráficos 2D, exportación a Excel y procesamiento completo
 """
 import os
 import sys
@@ -41,7 +41,7 @@ else:
 
 app = Flask(__name__)
 
-# === RUTA PRINCIPAL ===
+# === RUTA PRINCIPIAL ===
 @app.route("/")
 def home():
     return "🌱 Finca Digital Bot - Multi-Finca Activo", 200
@@ -194,7 +194,7 @@ def activar_finca_con_empleados():
     except Exception as e:
         return f"❌ Error al activar: {e}", 500
 
-# === RUTA: DASHBOARD POR FINCA (CON TODOS LOS FILTROS - CORREGIDO) ===
+# === RUTA: DASHBOARD POR FINCA (CON TODOS LOS FILTROS) ===
 @app.route("/finca/<clave>")
 def dashboard_finca(clave):
     try:
@@ -372,13 +372,13 @@ def dashboard_finca(clave):
                 ingresos = finanzas[0] or 0
                 gastos = finanzas[1] or 0
                 balance = ingresos - gastos
-                
-                # === TEXTO Y COLOR PARA EL BALANCE ===
-                balance_txt = "Positivo" if balance >= 0 else "Negativo"
-                balance_color = "#28a745" if balance >= 0 else "#dc3545"
 
         # === CONTAR FILTROS ACTIVOS ===
         filtros_activos_count = sum(1 for f in [especie_filter, corral_filter, tipo_actividad_filter] if f)
+
+        # === TEXTO Y COLOR PARA EL BALANCE ===
+        balance_txt = "Positivo" if balance >= 0 else "Negativo"
+        balance_color = "#28a745" if balance >= 0 else "#dc3545"
 
         # === FUNCIÓN PARA CALCULAR ESTADO DE SANIDAD ===
         def calcular_estado_sanidad(fecha_ultima, dias_vencimiento=30):
@@ -396,7 +396,7 @@ def dashboard_finca(clave):
             except:
                 return "—"
 
-        # === GENERAR HTML (TODO EN UN F-STRING) ===
+        # === GENERAR HTML ===
         html = f"""
         <!DOCTYPE html>
         <html>
@@ -645,9 +645,7 @@ def dashboard_finca(clave):
                     </div>
                 </form>
                 
-                <!-- MOSTRAR FILTROS ACTIVOS -->
 """
-        # === CORRECCIÓN: Usar f-string para la sección de filtros activos ===
         if filtros_activos_count > 0:
             html += f'<div class="filtros-activos">📌 Filtros activos: <strong>{filtros_activos_count} filtros aplicados</strong></div>'
         
@@ -805,7 +803,6 @@ def dashboard_finca(clave):
                 otros: {otros}
             }};
 
-            // Gráfico Financiero
             const ctxFin = document.getElementById('graficoFinanciero').getContext('2d');
             new Chart(ctxFin, {{
                 type: 'bar',
@@ -849,7 +846,6 @@ def dashboard_finca(clave):
                 }}
             }});
 
-            // Gráfico Animales
             const ctxAnim = document.getElementById('graficoAnimales').getContext('2d');
             new Chart(ctxAnim, {{
                 type: 'doughnut',
@@ -890,7 +886,7 @@ def dashboard_finca(clave):
         print(f"❌ Error dashboard: {e}")
         print(traceback.format_exc())
         return f"❌ Error al cargar el dashboard: {e}", 500
-    
+
 # === RUTA: CONSULTAR MI FINCA_ID ===
 @app.route("/mi-finca-id")
 def mi_finca_id():
@@ -945,7 +941,6 @@ def exportar_finca_excel(clave):
         if not database_url:
             return "❌ DATABASE_URL no configurada", 500
 
-        # Obtener filtro de fechas (mismo que dashboard)
         fecha_inicio_str = request.args.get("fecha_inicio")
         fecha_fin_str = request.args.get("fecha_fin")
         hoy = datetime.date.today()
@@ -969,7 +964,6 @@ def exportar_finca_excel(clave):
                 return "❌ Acceso denegado.", 403
             nombre_finca, finca_id = finca_row
 
-            # Inventario (sin filtro de fecha)
             df_animales = pd.read_sql_query("""
                 SELECT especie, marca_o_arete AS marca, categoria, peso, corral
                 FROM animales WHERE finca_id = %s AND estado = 'activo'
@@ -979,16 +973,14 @@ def exportar_finca_excel(clave):
                 lambda x: 'Bovino' if x == 'bovino' else 'Porcino' if x == 'porcino' else x.title()
             )
 
-            # Movimientos (CON filtro de fechas)
             df_registros = pd.read_sql_query("""
                 SELECT fecha, tipo_actividad AS tipo, detalle, lugar, cantidad, valor, observacion
                 FROM registros WHERE finca_id = %s AND fecha BETWEEN %s AND %s
                 ORDER BY fecha DESC LIMIT 500
             """, conn, params=(finca_id, fecha_inicio.isoformat(), fecha_fin.isoformat()))
 
-            # Finanzas (CON filtro de fechas)
             cur.execute("""
-                SELECT 
+                SELECT
                     COALESCE(SUM(CASE WHEN tipo_actividad = 'produccion' THEN valor ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN tipo_actividad = 'gasto' THEN valor ELSE 0 END) + 
                     SUM(CASE WHEN jornales > 0 THEN valor ELSE 0 END), 0)
@@ -1052,89 +1044,35 @@ def ingreso_manual_datos(clave):
             <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
             <style>
                 * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-                
                 body {{
                     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
                     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                     min-height: 100vh;
                     padding: 40px 20px;
                 }}
-
-                .container {{
-                    max-width: 800px;
-                    margin: 0 auto;
-                }}
-
-                .header {{
-                    text-align: center;
-                    margin-bottom: 40px;
-                    color: white;
-                }}
-
-                .header h1 {{
-                    font-size: 2.5em;
-                    font-weight: 700;
-                    margin-bottom: 10px;
-                    text-shadow: 0 2px 10px rgba(0,0,0,0.2);
-                }}
-
-                .header p {{
-                    font-size: 1.1em;
-                    opacity: 0.9;
-                }}
-
+                .container {{ max-width: 800px; margin: 0 auto; }}
+                .header {{ text-align: center; margin-bottom: 40px; color: white; }}
+                .header h1 {{ font-size: 2.5em; font-weight: 700; margin-bottom: 10px; }}
                 .form-card {{
                     background: white;
                     border-radius: 20px;
                     box-shadow: 0 20px 60px rgba(0,0,0,0.3);
                     overflow: hidden;
-                    animation: slideUp 0.5s ease-out;
                 }}
-
-                @keyframes slideUp {{
-                    from {{ opacity: 0; transform: translateY(30px); }}
-                    to {{ opacity: 1; transform: translateY(0); }}
-                }}
-
                 .form-header {{
                     background: linear-gradient(135deg, #198754 0%, #146c43 100%);
                     color: white;
                     padding: 30px;
                     text-align: center;
                 }}
-
-                .form-header h2 {{
-                    font-size: 1.8em;
-                    font-weight: 600;
-                    margin-bottom: 8px;
-                }}
-
-                .form-header p {{
-                    opacity: 0.9;
-                    font-size: 0.95em;
-                }}
-
-                .form-body {{
-                    padding: 40px;
-                }}
-
-                .form-group {{
-                    margin-bottom: 25px;
-                }}
-
+                .form-body {{ padding: 40px; }}
+                .form-group {{ margin-bottom: 25px; }}
                 .form-group label {{
                     display: block;
                     font-weight: 600;
                     color: #2c3e50;
                     margin-bottom: 8px;
-                    font-size: 0.95em;
                 }}
-
-                .form-group label .required {{
-                    color: #dc3545;
-                    margin-left: 3px;
-                }}
-
                 .form-group input,
                 .form-group select,
                 .form-group textarea {{
@@ -1143,31 +1081,13 @@ def ingreso_manual_datos(clave):
                     border: 2px solid #e9ecef;
                     border-radius: 12px;
                     font-size: 1em;
-                    font-family: inherit;
-                    transition: all 0.3s ease;
-                    background: #f8f9fa;
                 }}
-
-                .form-group input:focus,
-                .form-group select:focus,
-                .form-group textarea:focus {{
-                    outline: none;
-                    border-color: #198754;
-                    background: white;
-                    box-shadow: 0 0 0 4px rgba(25, 135, 84, 0.1);
-                }}
-
-                .form-group textarea {{
-                    resize: vertical;
-                    min-height: 100px;
-                }}
-
+                .form-group textarea {{ resize: vertical; min-height: 100px; }}
                 .form-row {{
                     display: grid;
                     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
                     gap: 20px;
                 }}
-
                 .btn-submit {{
                     background: linear-gradient(135deg, #198754 0%, #146c43 100%);
                     color: white;
@@ -1178,43 +1098,18 @@ def ingreso_manual_datos(clave):
                     border-radius: 12px;
                     cursor: pointer;
                     width: 100%;
-                    transition: all 0.3s ease;
-                    box-shadow: 0 4px 15px rgba(25, 135, 84, 0.3);
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    gap: 10px;
                 }}
-
-                .btn-submit:hover {{
-                    transform: translateY(-2px);
-                    box-shadow: 0 6px 25px rgba(25, 135, 84, 0.4);
-                }}
-
-                .btn-submit:active {{
-                    transform: translateY(0);
-                }}
-
                 .btn-back {{
                     display: inline-flex;
                     align-items: center;
                     gap: 8px;
                     color: #6c757d;
                     text-decoration: none;
-                    font-weight: 500;
                     margin-top: 25px;
                     padding: 12px 20px;
                     border: 2px solid #e9ecef;
                     border-radius: 10px;
-                    transition: all 0.3s ease;
                 }}
-
-                .btn-back:hover {{
-                    color: #198754;
-                    border-color: #198754;
-                    background: #f8f9fa;
-                }}
-
                 .info-box {{
                     background: linear-gradient(135deg, #e9f7ef 0%, #d4edda 100%);
                     border-left: 4px solid #28a745;
@@ -1222,30 +1117,8 @@ def ingreso_manual_datos(clave):
                     border-radius: 10px;
                     margin-bottom: 30px;
                 }}
-
-                .info-box h4 {{
-                    color: #155724;
-                    margin-bottom: 10px;
-                    font-size: 1em;
-                }}
-
-                .info-box ul {{
-                    color: #155724;
-                    margin-left: 20px;
-                    font-size: 0.9em;
-                    line-height: 1.6;
-                }}
-
-                .icon {{
-                    font-size: 1.3em;
-                }}
-
+                .info-box ul {{ color: #155724; margin-left: 20px; }}
                 @media (max-width: 768px) {{
-                    body {{ padding: 20px 15px; }}
-                    .header h1 {{ font-size: 1.8em; }}
-                    .form-body {{ padding: 25px; }}
-                    .form-header {{ padding: 25px; }}
-                    .form-header h2 {{ font-size: 1.4em; }}
                     .form-row {{ grid-template-columns: 1fr; }}
                 }}
             </style>
@@ -1256,93 +1129,66 @@ def ingreso_manual_datos(clave):
                     <h1>🌱 Finca Digital</h1>
                     <p>Registro manual de actividades - {nombre_finca}</p>
                 </div>
-
                 <div class="form-card">
                     <div class="form-header">
                         <h2>📝 Nueva Actividad</h2>
-                        <p>Completa el formulario para registrar en tu finca</p>
                     </div>
-
                     <div class="form-body">
                         <div class="info-box">
-                            <h4>💡 Consejos para un registro exitoso:</h4>
+                            <h4>💡 Consejos:</h4>
                             <ul>
-                                <li>Para <strong>animales</strong>, incluye marcas en observación: <code>marca LG01 peso 450 kg</code></li>
+                                <li>Para <strong>animales</strong>, incluye marcas: <code>marca LG01 peso 450 kg</code></li>
                                 <li>Para <strong>gastos</strong>, especifica el concepto claramente</li>
-                                <li>Los campos marcados con <span class="required">*</span> son obligatorios</li>
                             </ul>
                         </div>
-
                         <form method="POST" action="/finca/{clave}/guardar-manual" id="registroForm">
                             <div class="form-group">
-                                <label>📋 Tipo de Actividad <span class="required">*</span></label>
+                                <label>📋 Tipo de Actividad *</label>
                                 <select name="tipo" required>
-                                    <option value="">Selecciona una opción...</option>
+                                    <option value="">Selecciona...</option>
                                     <option value="siembra">🌱 Siembra</option>
-                                    <option value="produccion">🌾 Producción (Cosecha, Leche, Carne)</option>
-                                    <option value="sanidad_animal">💉 Sanidad y Reproducción Animal</option>
-                                    <option value="ingreso_animal">🐷 Ingreso de Animales</option>
-                                    <option value="salida_animal">🐄 Salida de Animales</option>
+                                    <option value="produccion">🌾 Producción</option>
+                                    <option value="sanidad_animal">💉 Sanidad Animal</option>
+                                    <option value="ingreso_animal">🐷 Ingreso Animales</option>
+                                    <option value="salida_animal">🐄 Salida Animales</option>
                                     <option value="gasto">💰 Gasto</option>
-                                    <option value="labor">🛠️ Labor / Mantenimiento</option>
+                                    <option value="labor">🛠️ Labor</option>
                                 </select>
                             </div>
-
                             <div class="form-group">
-                                <label>📦 Detalle <span class="required">*</span></label>
-                                <input type="text" name="detalle" placeholder="Ej: 5 terneras, maíz, medicina veterinaria" required>
+                                <label>📦 Detalle *</label>
+                                <input type="text" name="detalle" required>
                             </div>
-
                             <div class="form-row">
                                 <div class="form-group">
                                     <label>🔢 Cantidad</label>
-                                    <input type="number" name="cantidad" placeholder="Ej: 5" step="0.1" min="0">
+                                    <input type="number" name="cantidad" step="0.1" min="0">
                                 </div>
                                 <div class="form-group">
                                     <label>💰 Valor (COP)</label>
-                                    <input type="number" name="valor" placeholder="Ej: 500000" value="0" min="0">
+                                    <input type="number" name="valor" value="0" min="0">
                                 </div>
                             </div>
-
                             <div class="form-group">
-                                <label>📍 Lugar / Ubicación</label>
-                                <input type="text" name="lugar" placeholder="Ej: Corral A, Lote 3, Hacienda El Frayle">
+                                <label>📍 Lugar</label>
+                                <input type="text" name="lugar">
                             </div>
-
                             <div class="form-group">
-                                <label>📝 Observación <span style="color: #6c757d; font-weight: normal;">(Incluye marcas y pesos si aplica)</span></label>
-                                <textarea name="observacion" placeholder="Ej: marca LG01 peso 450 kg, marca LG02 peso 460 kg, marca TLGO4 peso 520 kg"></textarea>
+                                <label>📝 Observación</label>
+                                <textarea name="observacion" placeholder="marca LG01 peso 450 kg"></textarea>
                             </div>
-
                             <div class="form-group">
-                                <label>👷 Jornales (opcional)</label>
-                                <input type="number" name="jornales" placeholder="Ej: 2" value="0" min="0">
+                                <label>👷 Jornales</label>
+                                <input type="number" name="jornales" value="0" min="0">
                             </div>
-
-                            <button type="submit" class="btn-submit">
-                                <span class="icon">✅</span>
-                                Guardar Registro
-                            </button>
+                            <button type="submit" class="btn-submit">✅ Guardar Registro</button>
                         </form>
-
                         <div style="text-align: center;">
-                            <a href="/finca/{clave}" class="btn-back">
-                                ← Volver al Dashboard
-                            </a>
+                            <a href="/finca/{clave}" class="btn-back">← Volver al Dashboard</a>
                         </div>
                     </div>
                 </div>
             </div>
-
-            <script>
-            // Validación del formulario
-            document.getElementById('registroForm').addEventListener('submit', function(e) {{
-                const submitBtn = this.querySelector('.btn-submit');
-                submitBtn.innerHTML = '⏳ Guardando...';
-                submitBtn.disabled = true;
-                submitBtn.style.opacity = '0.7';
-            }});
-            </script>
         </body>
         </html>
         """
@@ -1351,7 +1197,6 @@ def ingreso_manual_datos(clave):
     except Exception as e:
         print(f"❌ Error formulario manual: {e}")
         return f"❌ Error: {e}", 500
-
 
 # ============================================================================
 # === RUTA: PROCESAR Y GUARDAR DATOS DEL FORMULARIO MANUAL ===
@@ -1375,7 +1220,6 @@ def guardar_manual_datos(clave):
                 usuario_row = cur.fetchone()
                 usuario_id = usuario_row[0] if usuario_row else None
 
-        # Obtener datos del formulario
         tipo = request.form.get("tipo", "")
         detalle = request.form.get("detalle", "").strip()
         cantidad = request.form.get("cantidad")
@@ -1384,7 +1228,6 @@ def guardar_manual_datos(clave):
         observacion = request.form.get("observacion", "").strip()
         jornales = request.form.get("jornales", 0)
 
-        # Convertir valores
         try:
             cantidad = float(cantidad) if cantidad else None
             valor = float(valor) if valor else 0
@@ -1392,11 +1235,9 @@ def guardar_manual_datos(clave):
         except:
             pass
 
-        # Validar datos mínimos
         if not tipo or not detalle:
             return "❌ Tipo y detalle son obligatorios", 400
 
-        # === LLAMAR A bot.py PARA GUARDAR REGISTRO ===
         if bot and hasattr(bot, 'guardar_registro'):
             mensaje_completo = f"{detalle} {lugar} {observacion}".strip()
             
@@ -1415,28 +1256,23 @@ def guardar_manual_datos(clave):
                 mensaje_completo=mensaje_completo
             )
 
-            # === PROCESAR ANIMALES SI ES INGRESO ANIMAL ===
+            # === PROCESAR INGRESO ANIMAL ===
             animales_registrados = 0
             if tipo == "ingreso_animal" and observacion:
-                import re
                 marcas = re.findall(r"marca\s+([a-z0-9-]+)", observacion, re.IGNORECASE)
                 
                 for marca in marcas:
                     marca_upper = marca.upper()
-                    
-                    # Extraer peso asociado a esta marca
                     peso_valor = None
                     pattern = r"marca\s+" + re.escape(marca) + r".*?peso\s*(\d+(?:\.\d+)?)\s*kg"
                     peso_match = re.search(pattern, observacion, re.IGNORECASE)
                     if peso_match:
                         peso_valor = float(peso_match.group(1))
 
-                    # Determinar especie
                     especie = "bovino"
                     if any(p in detalle.lower() for p in ["cerdo", "lechón", "cerda", "chancho", "porcino"]):
                         especie = "porcino"
 
-                    # Determinar categoría
                     categoria = None
                     if "ternera" in detalle.lower(): categoria = "ternera"
                     elif "ternero" in detalle.lower(): categoria = "ternero"
@@ -1465,11 +1301,43 @@ def guardar_manual_datos(clave):
                             conn.commit()
                             animales_registrados += 1
 
-            # === PROCESAR SANIDAD ANIMAL (NUEVO) ===
-            if tipo == "sanidad_animal" and observacion:
-                import re
+            # === PROCESAR SALIDA ANIMAL (COMPATIBLE RENDER GRATIS) ===
+            animales_vendidos = 0
+            if tipo == "salida_animal" and observacion:
+                marcas = re.findall(r"marca\s+([a-z0-9-]+)", observacion, re.IGNORECASE)
+                marcas = [m.upper() for m in marcas]
                 
-                # Clasificar tipo de sanidad
+                if marcas:
+                    for marca in marcas:
+                        try:
+                            with psycopg2.connect(database_url) as conn:
+                                with conn.cursor() as cur:
+                                    cur.execute("""
+                                        SELECT id_externo FROM animales
+                                        WHERE (marca_o_arete = %s OR id_externo LIKE %s)
+                                        AND finca_id = %s
+                                        AND estado = 'activo'
+                                    """, (marca, f"%{marca}%", finca_id))
+                                    row = cur.fetchone()
+                                    
+                                    if row:
+                                        id_externo = row[0]
+                                        cur.execute("""
+                                            UPDATE animales 
+                                            SET estado = 'vendido',
+                                                observaciones = %s
+                                            WHERE id_externo = %s
+                                        """, (f"Vendido: {detalle} - {observacion}", id_externo))
+                                        conn.commit()
+                                        animales_vendidos += 1
+                                        print(f"✅ Animal {marca} marcado como vendido")
+                                    else:
+                                        print(f"⚠️ Animal {marca} no encontrado o ya está vendido")
+                        except Exception as e:
+                            print(f"❌ Error al actualizar salida para {marca}: {e}")
+
+            # === PROCESAR SANIDAD ANIMAL ===
+            if tipo == "sanidad_animal" and observacion:
                 detalle_lower = detalle.lower()
                 if any(kw in detalle_lower for kw in ["vacuna", "aftosa", "brucelosis"]):
                     tipo_sanidad = "vacuna"
@@ -1480,17 +1348,14 @@ def guardar_manual_datos(clave):
                 else:
                     tipo_sanidad = "sanidad"
                 
-                # Extraer marcas
                 marcas = re.findall(r"marca\s+([a-z0-9-]+)", observacion, re.IGNORECASE)
                 marcas = [m.upper() for m in marcas]
                 
                 if marcas:
-                    # Guardar en salud_animal para cada animal con marca
                     for marca in marcas:
                         try:
                             with psycopg2.connect(database_url) as conn:
                                 with conn.cursor() as cur:
-                                    # Buscar id_externo del animal
                                     cur.execute("""
                                         SELECT id_externo FROM animales
                                         WHERE (marca_o_arete = %s OR id_externo LIKE %s)
@@ -1500,7 +1365,6 @@ def guardar_manual_datos(clave):
                                     
                                     if row:
                                         id_externo = row[0]
-                                        # Insertar en salud_animal
                                         cur.execute("""
                                             INSERT INTO salud_animal (id_externo, tipo, tratamiento, fecha, observacion, finca_id)
                                             VALUES (%s, %s, %s, %s, %s, %s)
@@ -1526,12 +1390,10 @@ def guardar_manual_datos(clave):
             <head>
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
-                <title>✅ Registro Exitoso | Finca Digital</title>
-                <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+                <title>✅ Registro Exitoso</title>
                 <style>
-                    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
                     body {{
-                        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+                        font-family: Arial, sans-serif;
                         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                         min-height: 100vh;
                         display: flex;
@@ -1542,33 +1404,16 @@ def guardar_manual_datos(clave):
                     .success-card {{
                         background: white;
                         border-radius: 20px;
-                        box-shadow: 0 20px 60px rgba(0,0,0,0.3);
                         padding: 50px;
                         text-align: center;
                         max-width: 500px;
-                        animation: scaleIn 0.5s ease-out;
-                    }}
-                    @keyframes scaleIn {{
-                        from {{ opacity: 0; transform: scale(0.9); }}
-                        to {{ opacity: 1; transform: scale(1); }}
                     }}
                     .success-icon {{
-                        width: 100px;
-                        height: 100px;
-                        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-                        border-radius: 50%;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        margin: 0 auto 25px;
-                        font-size: 3em;
-                        box-shadow: 0 10px 30px rgba(40, 167, 69, 0.3);
-                    }}
-                    h1 {{
+                        font-size: 4em;
                         color: #28a745;
-                        font-size: 2em;
-                        margin-bottom: 15px;
+                        margin-bottom: 20px;
                     }}
+                    h1 {{ color: #28a745; }}
                     .info {{
                         background: #f8f9fa;
                         border-radius: 12px;
@@ -1582,76 +1427,41 @@ def guardar_manual_datos(clave):
                         padding: 10px 0;
                         border-bottom: 1px solid #e9ecef;
                     }}
-                    .info-row:last-child {{ border-bottom: none; }}
-                    .info-label {{ color: #6c757d; font-weight: 500; }}
-                    .info-value {{ color: #2c3e50; font-weight: 600; }}
-                    .btn-group {{
-                        display: flex;
-                        gap: 15px;
-                        margin-top: 30px;
-                        flex-wrap: wrap;
-                        justify-content: center;
-                    }}
                     .btn {{
                         padding: 14px 28px;
                         border-radius: 10px;
                         text-decoration: none;
-                        font-weight: 600;
-                        transition: all 0.3s ease;
-                        display: inline-flex;
-                        align-items: center;
-                        gap: 8px;
+                        margin: 10px;
+                        display: inline-block;
                     }}
-                    .btn-primary {{
-                        background: linear-gradient(135deg, #198754 0%, #146c43 100%);
-                        color: white;
-                        box-shadow: 0 4px 15px rgba(25, 135, 84, 0.3);
-                    }}
-                    .btn-primary:hover {{
-                        transform: translateY(-2px);
-                        box-shadow: 0 6px 25px rgba(25, 135, 84, 0.4);
-                    }}
-                    .btn-secondary {{
-                        background: white;
-                        color: #198754;
-                        border: 2px solid #198754;
-                    }}
-                    .btn-secondary:hover {{
-                        background: #f8f9fa;
-                    }}
+                    .btn-primary {{ background: #198754; color: white; }}
+                    .btn-secondary {{ background: white; color: #198754; border: 2px solid #198754; }}
                 </style>
             </head>
             <body>
                 <div class="success-card">
                     <div class="success-icon">✓</div>
                     <h1>¡Registro Exitoso!</h1>
-                    <p style="color: #6c757d; margin-bottom: 25px;">
-                        Los datos han sido guardados en <strong>{nombre_finca}</strong>
-                    </p>
-
+                    <p>Los datos han sido guardados en <strong>{nombre_finca}</strong></p>
                     <div class="info">
                         <div class="info-row">
-                            <span class="info-label">📋 Tipo</span>
-                            <span class="info-value">{tipo.replace('_', ' ').title()}</span>
+                            <span>📋 Tipo</span>
+                            <span>{tipo.replace('_', ' ').title()}</span>
                         </div>
                         <div class="info-row">
-                            <span class="info-label">📦 Detalle</span>
-                            <span class="info-value">{detalle}</span>
+                            <span>📦 Detalle</span>
+                            <span>{detalle}</span>
                         </div>
                         <div class="info-row">
-                            <span class="info-label">💰 Valor</span>
-                            <span class="info-value">${valor:,.0f} COP</span>
+                            <span>💰 Valor</span>
+                            <span>${valor:,.0f} COP</span>
                         </div>
-                        {f'<div class="info-row"><span class="info-label">🐮 Animales</span><span class="info-value">{animales_registrados} registrados</span></div>' if animales_registrados > 0 else ''}
+                        {f'<div class="info-row"><span>🐮 Animales</span><span>{animales_registrados} registrados</span></div>' if animales_registrados > 0 else ''}
+                        {f'<div class="info-row"><span>💸 Vendidos</span><span>{animales_vendidos} actualizados</span></div>' if animales_vendidos > 0 else ''}
                     </div>
-
-                    <div class="btn-group">
-                        <a href="/finca/{clave}/ingreso-manual" class="btn btn-secondary">
-                            📝 Registrar Otro
-                        </a>
-                        <a href="/finca/{clave}" class="btn btn-primary">
-                            📊 Ver Dashboard
-                        </a>
+                    <div>
+                        <a href="/finca/{clave}/ingreso-manual" class="btn btn-secondary">📝 Registrar Otro</a>
+                        <a href="/finca/{clave}" class="btn btn-primary">📊 Dashboard</a>
                     </div>
                 </div>
             </body>
