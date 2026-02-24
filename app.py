@@ -214,6 +214,10 @@ def dashboard_finca(clave):
         # === CONTAR FILTROS ACTIVOS (CORRECCIÓN: calcular antes del HTML) ===
         filtros_activos_count = sum(1 for f in [especie_filter, corral_filter, tipo_actividad_filter] if f)
 
+        # === TEXTO Y COLOR PARA EL BALANCE (CORRECCIÓN) ===
+        balance_txt = "Positivo" if balance >= 0 else "Negativo"
+        balance_color = "#28a745" if balance >= 0 else "#dc3545"
+
         # === PROCESAR FILTRO DE FECHAS ===
         if fecha_inicio_str and fecha_fin_str:
             try:
@@ -662,8 +666,8 @@ def dashboard_finca(clave):
                 </div>
                 <div class="tarjeta balance">
                     <h3>📈 Balance</h3>
-                    <div class="valor">${balance:,.0f}</div>
-                    <small style="color: #6c757d;">{'Positivo' if balance >= 0 else 'Negativo'}</small>
+                    <div class="valor" style="color: {balance_color};">${balance:,.0f}</div>
+                    <small style="color: #6c757d;">{balance_txt}</small>
                 </div>
             </div>
 
