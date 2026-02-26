@@ -182,7 +182,7 @@ def activar_finca_con_empleados():
                 conn.commit()
         
         empleados_txt = ", ".join(lista_empleados) if lista_empleados else "ninguno"
-        url_dashboard = f"https://finca-bot.onrender.com/finca/{clave_secreta}"
+        url_dashboard = f"https://finca-bot-ukhk.onrender.com/finca/{clave_secreta}"
         return (
             f"✅ Finca '{nombre_finca}' activada con éxito.<br>"
             f"• Dueño: {dueno_formateado}<br>"
