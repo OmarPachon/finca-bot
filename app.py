@@ -431,234 +431,162 @@ def dashboard_finca(clave):
             <title>{nombre_finca} - Finca Digital</title>
             <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
             <style>
-            * {{ box-sizing: border-box; }}
-            body {{
-                font-family: 'Segoe UI', Arial, sans-serif;
-                max-width: 1400px;
-                margin: 0 auto;
-                padding: 20px;
-                background: #f5f7fa;
-            }}
-            h1 {{ color: #198754; text-align: center; margin-bottom: 10px; font-size: 1.8em; }}
-            h2 {{ color: #198754; font-size: 1.2em; margin-top: 25px; margin-bottom: 15px; }}
-            h3 {{ color: #2c3e50; font-size: 0.95em; margin: 0 0 10px 0; font-weight: 600; }}
+* {{ box-sizing: border-box; }}
+body {{
+font-family: Arial, sans-serif;
+max-width: 1400px;
+margin: 0 auto;
+padding: 20px;
+background: #f5f7fa;
+}}
+h1 {{ color: #198754; text-align: center; margin: 10px 0; font-size: 1.6em; }}
+h2 {{ color: #198754; font-size: 1.1em; margin: 20px 0 10px 0; }}
 
-            /* === TARJETAS - MÁS COMPACTAS === */
-            .resumen {{
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-                gap: 15px;
-                margin: 20px 0;
-            }}
-            .tarjeta {{
-                background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-                padding: 15px 18px;
-                border-radius: 10px;
-                box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-                border-left: 4px solid;
-                transition: transform 0.2s ease;
-            }}
-            .tarjeta:hover {{ transform: translateY(-2px); }}
-            .tarjeta.ingresos {{ border-left-color: #28a745; }}
-            .tarjeta.gastos {{ border-left-color: #dc3545; }}
-            .tarjeta.balance {{ border-left-color: #0d6efd; }}
-            .tarjeta h3 {{ 
-                color: #6c757d; 
-                font-size: 0.75em; 
-                text-transform: uppercase; 
-                letter-spacing: 0.8px;
-                margin-bottom: 5px;
-            }}
-            .tarjeta .valor {{
-                font-size: 1.4em;
-                font-weight: bold;
-                color: #2c3e50;
-                margin: 5px 0;
-                line-height: 1.2;
-            }}
-            .tarjeta.ingresos .valor {{ color: #28a745; }}
-            .tarjeta.gastos .valor {{ color: #dc3545; }}
-            .tarjeta.balance .valor {{ color: #0d6efd; }}
-            .tarjeta small {{
-                color: #6c757d;
-                font-size: 0.8em;
-            }}
+/* TARJETAS - MÁS BAJAS */
+.resumen {{
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+gap: 15px;
+margin: 20px 0;
+}}
+.tarjeta {{
+background: white;
+padding: 15px;
+border-radius: 8px;
+box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+border-left: 4px solid;
+}}
+.tarjeta.ingresos {{ border-left-color: #28a745; }}
+.tarjeta.gastos {{ border-left-color: #dc3545; }}
+.tarjeta.balance {{ border-left-color: #0d6efd; }}
+.tarjeta h3 {{ color: #6c757d; font-size: 0.75em; margin: 0 0 5px 0; text-transform: uppercase; }}
+.tarjeta .valor {{
+font-size: 1.3em;
+font-weight: bold;
+margin: 5px 0;
+}}
+.tarjeta.ingresos .valor {{ color: #28a745; }}
+.tarjeta.gastos .valor {{ color: #dc3545; }}
+.tarjeta.balance .valor {{ color: #0d6efd; }}
+.tarjeta small {{ color: #6c757d; font-size: 0.8em; }}
 
-            /* === FILTROS === */
-            .filtro-fechas {{
-                background: white;
-                padding: 18px;
-                border-radius: 10px;
-                box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-                margin: 20px 0;
-            }}
-            .filtro-form {{
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-                gap: 12px;
-                align-items: end;
-            }}
-            .filtro-form label {{
-                display: block;
-                font-size: 0.8em;
-                margin-bottom: 4px;
-                color: #6c757d;
-            }}
-            .filtro-form input[type="date"],
-            .filtro-form select {{
-                padding: 8px;
-                border: 1px solid #ddd;
-                border-radius: 5px;
-                font-size: 0.9em;
-                width: 100%;
-            }}
-            .filtro-form button {{
-                background: #198754;
-                color: white;
-                padding: 8px 16px;
-                border: none;
-                border-radius: 5px;
-                cursor: pointer;
-                font-size: 0.9em;
-                white-space: nowrap;
-            }}
-            .filtro-form button:hover {{ background: #146c43; }}
-            .btn-limpiar {{
-                padding: 8px 16px;
-                color: #6c757d;
-                text-decoration: none;
-                border: 1px solid #ddd;
-                border-radius: 5px;
-                text-align: center;
-                display: block;
-                font-size: 0.9em;
-            }}
-            .btn-limpiar:hover {{
-                background: #f8f9fa;
-                color: #198754;
-                border-color: #198754;
-            }}
+/* FILTROS */
+.filtro-fechas {{
+background: white;
+padding: 15px;
+border-radius: 8px;
+margin: 15px 0;
+}}
+.filtro-form {{
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+gap: 10px;
+}}
+.filtro-form label {{ display: block; font-size: 0.85em; margin-bottom: 3px; color: #6c757d; }}
+.filtro-form input, .filtro-form select {{
+padding: 8px;
+border: 1px solid #ddd;
+border-radius: 5px;
+width: 100%;
+}}
+.filtro-form button {{
+background: #198754;
+color: white;
+padding: 8px 16px;
+border: none;
+border-radius: 5px;
+cursor: pointer;
+}}
+.btn-limpiar {{
+padding: 8px 16px;
+color: #6c757d;
+text-decoration: none;
+border: 1px solid #ddd;
+border-radius: 5px;
+text-align: center;
+}}
 
-            /* === GRÁFICOS === */
-            .graficos-container {{
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-                gap: 20px;
-                margin: 25px 0;
-            }}
-            .grafico-card {{
-                background: white;
-                padding: 20px;
-                border-radius: 10px;
-                box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            }}
+/* GRÁFICOS */
+.graficos-container {{
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+gap: 15px;
+margin: 20px 0;
+}}
+.grafico-card {{
+background: white;
+padding: 15px;
+border-radius: 8px;
+}}
 
-            /* === TABLAS - ANCHO COMPLETO === */
-            table {{
-                width: 100%;
-                border-collapse: collapse;
-                margin: 15px 0;
-                background: white;
-                border-radius: 8px;
-                overflow: hidden;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-                display: block;
-            }}
-            th, td {{
-                border: 1px solid #e9ecef;
-                padding: 10px 12px;
-                text-align: left;
-                font-size: 0.9em;
-            }}
-            th {{
-                background: linear-gradient(135deg, #198754 0%, #146c43 100%);
-                color: white;
-                font-weight: 600;
-                font-size: 0.85em;
-            }}
-            tr:nth-child(even) {{ background-color: #f8f9fa; }}
-            tr:hover {{ background-color: #e9f7ef; }}
+/* TABLAS - ANCHO COMPLETO */
+table {{
+width: 100%;
+border-collapse: collapse;
+margin: 15px 0;
+background: white;
+border-radius: 6px;
+overflow: hidden;
+}}
+th, td {{
+border: 1px solid #e9ecef;
+padding: 8px 10px;
+text-align: left;
+font-size: 0.9em;
+}}
+th {{
+background: #198754;
+color: white;
+font-weight: 600;
+}}
+tr:nth-child(even) {{ background-color: #f8f9fa; }}
 
-            /* === TABLA SANIDAD - SCROLL HORIZONTAL === */
-            .tabla-sanidad {{
-                overflow-x: auto;
-                margin: 15px 0;
-                -webkit-overflow-scrolling: touch;
-            }}
-            .tabla-sanidad table {{
-                font-size: 0.85em;
-                min-width: 900px;
-                display: table;
-            }}
-            .tabla-sanidad th, .tabla-sanidad td {{
-                padding: 8px 10px;
-                white-space: nowrap;
-            }}
+/* TABLA SANIDAD - SCROLL */
+.tabla-sanidad {{
+overflow-x: auto;
+margin: 15px 0;
+}}
+.tabla-sanidad table {{
+min-width: 900px;
+font-size: 0.85em;
+}}
 
-            /* === BOTÓN EXPORTAR === */
-            .btn-export {{
-                display: inline-flex;
-                align-items: center;
-                gap: 6px;
-                background: linear-gradient(135deg, #198754 0%, #146c43 100%);
-                color: white;
-                padding: 12px 24px;
-                text-decoration: none;
-                border-radius: 8px;
-                font-weight: 600;
-                font-size: 0.9em;
-                box-shadow: 0 3px 10px rgba(25, 135, 84, 0.3);
-                transition: all 0.3s ease;
-                margin: 15px 0;
-            }}
-            .btn-export:hover {{
-                transform: translateY(-2px);
-                box-shadow: 0 5px 15px rgba(25, 135, 84, 0.4);
-            }}
-
-            /* === LEYENDA Y FILTROS === */
-            .leyenda-sanidad {{
-                background: #f8f9fa;
-                padding: 12px;
-                border-radius: 8px;
-                margin-top: 10px;
-                font-size: 0.8em;
-                color: #6c757d;
-            }}
-            .filtros-activos {{
-                background: #e9f7ef;
-                border: 1px solid #28a745;
-                padding: 8px 12px;
-                border-radius: 6px;
-                margin: 12px 0;
-                font-size: 0.85em;
-                color: #155724;
-            }}
-            .filtros-activos strong {{
-                color: #198754;
-            }}
-
-            /* === FOOTER === */
-            .footer {{
-                margin-top: 30px;
-                padding: 15px;
-                text-align: center;
-                font-size: 0.85em;
-                color: #6c757d;
-                border-top: 1px solid #e9ecef;
-            }}
-
-            /* === RESPONSIVE === */
-            @media (max-width: 768px) {{
-            .tarjeta .valor {{ font-size: 1.2em; }}
-            .resumen {{ grid-template-columns: repeat(2, 1fr); }}
-            .graficos-container {{ grid-template-columns: 1fr; }}
-            .filtro-form {{ grid-template-columns: 1fr; }}
-            th, td {{ padding: 8px; font-size: 0.85em; }}
-            .tabla-sanidad table {{ font-size: 0.75em; min-width: 800px; }}
-            .btn-export {{ padding: 10px 18px; font-size: 0.85em; }}
-            }}
-            </style>
+/* BOTÓN EXPORTAR */
+.btn-export {{
+display: inline-block;
+background: #198754;
+color: white;
+padding: 10px 20px;
+text-decoration: none;
+border-radius: 6px;
+margin: 15px 0;
+text-align: center;
+}}
+.leyenda-sanidad {{
+background: #f8f9fa;
+padding: 10px;
+border-radius: 6px;
+font-size: 0.8em;
+color: #6c757d;
+margin: 10px 0;
+}}
+.filtros-activos {{
+background: #e9f7ef;
+border: 1px solid #28a745;
+padding: 8px 12px;
+border-radius: 6px;
+margin: 10px 0;
+font-size: 0.85em;
+}}
+.footer {{
+margin-top: 30px;
+padding: 15px;
+text-align: center;
+font-size: 0.85em;
+color: #6c757d;
+border-top: 1px solid #e9ecef;
+}}
+</style>
         </head>
         <body>
             <h1>📊 Dashboard - {nombre_finca}</h1>
