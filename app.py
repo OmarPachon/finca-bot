@@ -431,162 +431,78 @@ def dashboard_finca(clave):
             <title>{nombre_finca} - Finca Digital</title>
             <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
             <style>
-* {{ box-sizing: border-box; }}
-body {{
-font-family: Arial, sans-serif;
-max-width: 1400px;
-margin: 0 auto;
-padding: 20px;
-background: #f5f7fa;
-}}
-h1 {{ color: #198754; text-align: center; margin: 10px 0; font-size: 1.6em; }}
-h2 {{ color: #198754; font-size: 1.1em; margin: 20px 0 10px 0; }}
+        * {{ box-sizing: border-box; }}
+        body {{
+            font-family: Arial, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f7fa;
+        }}
+        h1 {{ color: #198754; text-align: center; margin: 10px 0; font-size: 1.6em; }}
+        h2 {{ color: #198754; font-size: 1.1em; margin: 25px 0 15px 0; }}
 
-/* TARJETAS - MÁS BAJAS */
-.resumen {{
-display: grid;
-grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-gap: 15px;
-margin: 20px 0;
-}}
-.tarjeta {{
-background: white;
-padding: 15px;
-border-radius: 8px;
-box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-border-left: 4px solid;
-}}
-.tarjeta.ingresos {{ border-left-color: #28a745; }}
-.tarjeta.gastos {{ border-left-color: #dc3545; }}
-.tarjeta.balance {{ border-left-color: #0d6efd; }}
-.tarjeta h3 {{ color: #6c757d; font-size: 0.75em; margin: 0 0 5px 0; text-transform: uppercase; }}
-.tarjeta .valor {{
-font-size: 1.3em;
-font-weight: bold;
-margin: 5px 0;
-}}
-.tarjeta.ingresos .valor {{ color: #28a745; }}
-.tarjeta.gastos .valor {{ color: #dc3545; }}
-.tarjeta.balance .valor {{ color: #0d6efd; }}
-.tarjeta small {{ color: #6c757d; font-size: 0.8em; }}
+        /* 6 TARJETAS EN UNA FILA */
+        .resumen {{
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 15px;
+            margin: 20px 0;
+        }}
+        .tarjeta {{
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-left: 4px solid;
+            min-height: 100px;
+        }}
+        .tarjeta.ingresos {{ border-left-color: #28a745; }}
+        .tarjeta.gastos {{ border-left-color: #dc3545; }}
+        .tarjeta.balance {{ border-left-color: #0d6efd; }}
+        .tarjeta h3 {{ color: #6c757d; font-size: 0.75em; margin: 0 0 5px 0; text-transform: uppercase; }}
+        .tarjeta .valor {{ font-size: 1.3em; font-weight: bold; margin: 5px 0; }}
+        .tarjeta.ingresos .valor {{ color: #28a745; }}
+        .tarjeta.gastos .valor {{ color: #dc3545; }}
+        .tarjeta.balance .valor {{ color: #0d6efd; }}
+        .tarjeta small {{ color: #6c757d; font-size: 0.8em; }}
 
-/* FILTROS */
-.filtro-fechas {{
-background: white;
-padding: 15px;
-border-radius: 8px;
-margin: 15px 0;
-}}
-.filtro-form {{
-display: grid;
-grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-gap: 10px;
-}}
-.filtro-form label {{ display: block; font-size: 0.85em; margin-bottom: 3px; color: #6c757d; }}
-.filtro-form input, .filtro-form select {{
-padding: 8px;
-border: 1px solid #ddd;
-border-radius: 5px;
-width: 100%;
-}}
-.filtro-form button {{
-background: #198754;
-color: white;
-padding: 8px 16px;
-border: none;
-border-radius: 5px;
-cursor: pointer;
-}}
-.btn-limpiar {{
-padding: 8px 16px;
-color: #6c757d;
-text-decoration: none;
-border: 1px solid #ddd;
-border-radius: 5px;
-text-align: center;
-}}
+        /* FILTROS */
+        .filtro-fechas {{ background: white; padding: 15px; border-radius: 8px; margin: 15px 0; }}
+        .filtro-form {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }}
+        .filtro-form label {{ display: block; font-size: 0.85em; margin-bottom: 3px; color: #6c757d; }}
+        .filtro-form input, .filtro-form select {{ padding: 8px; border: 1px solid #ddd; border-radius: 5px; width: 100%; }}
+        .filtro-form button {{ background: #198754; color: white; padding: 8px 16px; border: none; border-radius: 5px; cursor: pointer; }}
+        .btn-limpiar {{ padding: 8px 16px; color: #6c757d; text-decoration: none; border: 1px solid #ddd; border-radius: 5px; text-align: center; }}
 
-/* GRÁFICOS */
-.graficos-container {{
-display: grid;
-grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-gap: 15px;
-margin: 20px 0;
-}}
-.grafico-card {{
-background: white;
-padding: 15px;
-border-radius: 8px;
-}}
+        /* GRÁFICOS - 2 COLUMNAS */
+        .graficos-container {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin: 20px 0; }}
+        .grafico-card {{ background: white; padding: 15px; border-radius: 8px; }}
 
-/* TABLAS - ANCHO COMPLETO */
-table {{
-width: 100%;
-border-collapse: collapse;
-margin: 15px 0;
-background: white;
-border-radius: 6px;
-overflow: hidden;
-}}
-th, td {{
-border: 1px solid #e9ecef;
-padding: 8px 10px;
-text-align: left;
-font-size: 0.9em;
-}}
-th {{
-background: #198754;
-color: white;
-font-weight: 600;
-}}
-tr:nth-child(even) {{ background-color: #f8f9fa; }}
+        /* TABLAS - ANCHO COMPLETO, UNA DEBAJO DE OTRA */
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            background: white;
+            border-radius: 6px;
+            overflow: hidden;
+            display: table;  /* IMPORTANTE: NO block */
+        }}
+        th, td {{ border: 1px solid #e9ecef; padding: 8px 10px; text-align: left; font-size: 0.9em; }}
+        th {{ background: #198754; color: white; font-weight: 600; }}
+        tr:nth-child(even) {{ background-color: #f8f9fa; }}
 
-/* TABLA SANIDAD - SCROLL */
-.tabla-sanidad {{
-overflow-x: auto;
-margin: 15px 0;
-}}
-.tabla-sanidad table {{
-min-width: 900px;
-font-size: 0.85em;
-}}
+        /* SANIDAD - SCROLL HORIZONTAL */
+        .tabla-sanidad {{ overflow-x: auto; margin: 15px 0; }}
+        .tabla-sanidad table {{ min-width: 900px; font-size: 0.85em; }}
 
-/* BOTÓN EXPORTAR */
-.btn-export {{
-display: inline-block;
-background: #198754;
-color: white;
-padding: 10px 20px;
-text-decoration: none;
-border-radius: 6px;
-margin: 15px 0;
-text-align: center;
-}}
-.leyenda-sanidad {{
-background: #f8f9fa;
-padding: 10px;
-border-radius: 6px;
-font-size: 0.8em;
-color: #6c757d;
-margin: 10px 0;
-}}
-.filtros-activos {{
-background: #e9f7ef;
-border: 1px solid #28a745;
-padding: 8px 12px;
-border-radius: 6px;
-margin: 10px 0;
-font-size: 0.85em;
-}}
-.footer {{
-margin-top: 30px;
-padding: 15px;
-text-align: center;
-font-size: 0.85em;
-color: #6c757d;
-border-top: 1px solid #e9ecef;
-}}
-</style>
+        /* BOTONES */
+        .btn-export {{ display: inline-block; background: #198754; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; margin: 15px 0; text-align: center; }}
+        .leyenda-sanidad {{ background: #f8f9fa; padding: 10px; border-radius: 6px; font-size: 0.8em; color: #6c757d; margin: 10px 0; }}
+        .filtros-activos {{ background: #e9f7ef; border: 1px solid #28a745; padding: 8px 12px; border-radius: 6px; margin: 10px 0; font-size: 0.85em; }}
+        .footer {{ margin-top: 30px; padding: 15px; text-align: center; font-size: 0.85em; color: #6c757d; border-top: 1px solid #e9ecef; }}
+        </style>
         </head>
         <body>
             <h1>📊 Dashboard - {nombre_finca}</h1>
