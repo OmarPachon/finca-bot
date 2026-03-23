@@ -372,6 +372,29 @@ def dashboard_finca(clave):
                 ingresos = finanzas[0] or 0
                 gastos = finanzas[1] or 0
                 balance = ingresos - gastos
+                
+                # === KPIs ADICIONALES (FASE 2) ===
+                # 1. Total animales activos
+                cur.execute("""
+                SELECT COUNT(*) FROM animales
+                WHERE finca_id = %s AND estado = 'activo'
+                """, (finca_id,))
+                total_animales = cur.fetchone()[0]
+
+                # 2. Días restantes de suscripción
+                cur.execute("""
+                SELECT vencimiento_suscripcion FROM fincas
+                WHERE id = %s
+                """, (finca_id,))
+                vencimiento = cur.fetchone()[0]
+                dias_suscripcion = (vencimiento - hoy).days if vencimiento else 0
+
+                # 3. Movimientos en el periodo
+                cur.execute("""
+                SELECT COUNT(*) FROM registros
+                WHERE finca_id = %s AND fecha BETWEEN %s AND %s
+                """, (finca_id, fecha_inicio.isoformat(), fecha_fin.isoformat()))
+                total_movimientos = cur.fetchone()[0]
 
         # === CONTAR FILTROS ACTIVOS ===
         filtros_activos_count = sum(1 for f in [especie_filter, corral_filter, tipo_actividad_filter] if f)
@@ -689,8 +712,24 @@ def dashboard_finca(clave):
                     <div class="valor" style="color: {balance_color};">${balance:,.0f}</div>
                     <small style="color: #6c757d;">{balance_txt}</small>
                 </div>
+            <!-- TARJETAS KPIs ADICIONALES (FASE 2) -->
+            <div class="resumen">
+                <div class="tarjeta animales">
+                    <h3>🐮 Total Animales</h3>
+                    <div class="valor">{total_animales}</div>
+                    <small style="color: #6c757d;">Activos en inventario</small>
+                </div>
+                <div class="tarjeta suscripcion">
+                    <h3>📅 Días Suscripción</h3>
+                    <div class="valor">{dias_suscripcion}</div>
+                    <small style="color: #6c757d;">Días restantes</small>
+                </div>
+                <div class="tarjeta movimientos">
+                <h3>📝 Movimientos</h3>
+                <div class="valor">{total_movimientos}</div>
+                <small style="color: #6c757d;">En el periodo</small>
             </div>
-
+            </div>
             <!-- GRÁFICOS -->
             <div class="graficos-container">
                 <div class="grafico-card">
