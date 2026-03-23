@@ -402,198 +402,218 @@ def dashboard_finca(clave):
         <html>
         <head>
             <meta charset="utf-8">
+            <link rel="preconnect" href="https://fonts.googleapis.com">
+            <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <title>{nombre_finca} - Finca Digital</title>
             <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
             <style>
-                * {{ box-sizing: border-box; }}
-                body {{ 
-                    font-family: 'Segoe UI', Arial, sans-serif; 
-                    max-width: 1400px; 
-                    margin: 0 auto; 
-                    padding: 20px; 
-                    background: #f5f7fa;
-                }}
-                h1 {{ color: #198754; text-align: center; margin-bottom: 10px; }}
-                h2 {{ color: #198754; font-size: 1.3em; margin-top: 25px; }}
-                h3 {{ color: #2c3e50; font-size: 1.1em; margin: 0 0 15px 0; }}
-                .resumen {{ 
-                    display: grid; 
-                    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); 
-                    gap: 20px; 
-                    margin: 25px 0; 
-                }}
-                .tarjeta {{ 
-                    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-                    padding: 25px; 
-                    border-radius: 12px; 
-                    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-                    border-left: 5px solid;
-                    transition: transform 0.2s ease;
-                }}
-                .tarjeta:hover {{ transform: translateY(-3px); }}
-                .tarjeta.ingresos {{ border-left-color: #28a745; }}
-                .tarjeta.gastos {{ border-left-color: #dc3545; }}
-                .tarjeta.balance {{ border-left-color: #0d6efd; }}
-                .tarjeta h3 {{ color: #6c757d; font-size: 0.9em; text-transform: uppercase; letter-spacing: 1px; }}
-                .tarjeta .valor {{ 
-                    font-size: 2em; 
-                    font-weight: bold; 
-                    color: #2c3e50; 
-                    margin: 10px 0;
-                }}
-                .tarjeta.ingresos .valor {{ color: #28a745; }}
-                .tarjeta.gastos .valor {{ color: #dc3545; }}
-                .tarjeta.balance .valor {{ color: #0d6efd; }}
-                .filtro-fechas {{
-                    background: white;
-                    padding: 20px;
-                    border-radius: 12px;
-                    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-                    margin: 20px 0;
-                }}
-                .filtro-form {{
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-                    gap: 15px;
-                    align-items: end;
-                }}
-                .filtro-form label {{
-                    display: block;
-                    font-size: 0.9em;
-                    margin-bottom: 5px;
-                    color: #6c757d;
-                }}
-                .filtro-form input[type="date"],
-                .filtro-form select {{
-                    padding: 10px;
-                    border: 1px solid #ddd;
-                    border-radius: 6px;
-                    font-size: 1em;
-                    width: 100%;
-                }}
-                .filtro-form button {{
-                    background: #198754;
-                    color: white;
-                    padding: 10px 20px;
-                    border: none;
-                    border-radius: 6px;
-                    cursor: pointer;
-                    font-size: 1em;
-                    white-space: nowrap;
-                }}
-                .filtro-form button:hover {{ background: #146c43; }}
-                .btn-limpiar {{
-                    padding: 10px 20px;
-                    color: #6c757d;
-                    text-decoration: none;
-                    border: 1px solid #ddd;
-                    border-radius: 6px;
-                    text-align: center;
-                    display: block;
-                }}
-                .btn-limpiar:hover {{
-                    background: #f8f9fa;
-                    color: #198754;
-                    border-color: #198754;
-                }}
-                .graficos-container {{
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-                    gap: 25px;
-                    margin: 30px 0;
-                }}
-                .grafico-card {{
-                    background: white;
-                    padding: 25px;
-                    border-radius: 12px;
-                    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-                }}
-                table {{ 
-                    width: 100%; 
-                    border-collapse: collapse; 
-                    margin: 20px 0;
-                    background: white;
-                    border-radius: 8px;
-                    overflow: hidden;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-                }}
-                th, td {{ 
-                    border: 1px solid #e9ecef; 
-                    padding: 12px 15px; 
-                    text-align: left; 
-                }}
-                th {{ 
-                    background: linear-gradient(135deg, #198754 0%, #146c43 100%);
-                    color: white;
-                    font-weight: 600;
-                }}
-                tr:nth-child(even) {{ background-color: #f8f9fa; }}
-                tr:hover {{ background-color: #e9f7ef; }}
-                .btn-export {{
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 8px;
-                    background: linear-gradient(135deg, #198754 0%, #146c43 100%);
-                    color: white;
-                    padding: 14px 28px;
-                    text-decoration: none;
-                    border-radius: 8px;
-                    font-weight: 600;
-                    box-shadow: 0 4px 12px rgba(25, 135, 84, 0.3);
-                    transition: all 0.3s ease;
-                    margin: 20px 0;
-                }}
-                .btn-export:hover {{
-                    transform: translateY(-2px);
-                    box-shadow: 0 6px 20px rgba(25, 135, 84, 0.4);
-                }}
-                .footer {{ 
-                    margin-top: 40px; 
-                    padding: 20px;
-                    text-align: center;
-                    font-size: 0.9em; 
-                    color: #6c757d;
-                    border-top: 1px solid #e9ecef;
-                }}
-                .tabla-sanidad {{
-                    overflow-x: auto;
-                    margin: 20px 0;
-                }}
-                .tabla-sanidad table {{
-                    font-size: 0.85em;
-                }}
-                .tabla-sanidad th, .tabla-sanidad td {{
-                    padding: 10px 12px;
-                    white-space: nowrap;
-                }}
-                .leyenda-sanidad {{
-                    background: #f8f9fa;
-                    padding: 15px;
-                    border-radius: 8px;
-                    margin-top: 10px;
-                    font-size: 0.85em;
-                    color: #6c757d;
-                }}
-                .filtros-activos {{
-                    background: #e9f7ef;
-                    border: 1px solid #28a745;
-                    padding: 10px 15px;
-                    border-radius: 6px;
-                    margin: 15px 0;
-                    font-size: 0.9em;
-                    color: #155724;
-                }}
-                .filtros-activos strong {{
-                    color: #198754;
-                }}
-                @media (max-width: 768px) {{
-                    .tarjeta .valor {{ font-size: 1.5em; }}
-                    .graficos-container {{ grid-template-columns: 1fr; }}
-                    .filtro-form {{ grid-template-columns: 1fr; }}
-                    th, td {{ padding: 10px; font-size: 0.85em; }}
-                    .tabla-sanidad table {{ font-size: 0.75em; }}
-                }}
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+            * {{ box-sizing: border-box; }}
+            body {{
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+                max-width: 1400px;
+                margin: 0 auto;
+                padding: 32px;
+                background: #f3f4f6;
+                color: #1f2937;
+                line-height: 1.6;
+            }}
+            h1 {{ 
+                color: #059669; 
+                text-align: center; 
+                margin-bottom: 10px;
+                font-size: 2em;
+                font-weight: 700;
+            }}
+            h2 {{ 
+                color: #059669; 
+                font-size: 1.4em; 
+                margin-top: 40px;
+                margin-bottom: 20px;
+                font-weight: 600;
+            }}
+            h3 {{ 
+                color: #374151; 
+                font-size: 1.1em; 
+                margin: 0 0 15px 0;
+                font-weight: 600;
+            }}
+            .resumen {{
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+                gap: 24px;
+                margin: 32px 0;
+            }}
+            .tarjeta {{
+                background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
+                padding: 28px;
+                border-radius: 16px;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+                border-left: 6px solid;
+                transition: all 0.3s ease;
+            }}
+            .tarjeta:hover {{ 
+                transform: translateY(-5px);
+                box-shadow: 0 15px 50px rgba(0,0,0,0.15);
+            }}
+            .tarjeta.ingresos {{ border-left-color: #10b981; }}
+            .tarjeta.gastos {{ border-left-color: #ef4444; }}
+            .tarjeta.balance {{ border-left-color: #3b82f6; }}
+            .tarjeta h3 {{ 
+                color: #6b7280; 
+                font-size: 0.85em; 
+                text-transform: uppercase; 
+                letter-spacing: 1.2px;
+                font-weight: 600;
+            }}
+            .tarjeta .valor {{
+                font-size: 2.2em;
+                font-weight: 700;
+                color: #1f2937;
+                margin: 12px 0;
+            }}
+            .tarjeta.ingresos .valor {{ color: #10b981; }}
+            .tarjeta.gastos .valor {{ color: #ef4444; }}
+            .tarjeta.balance .valor {{ color: #3b82f6; }}
+            .tarjeta small {{
+                color: #9ca3af;
+                font-size: 0.9em;
+            }}
+            .filtro-fechas {{
+                background: white;
+                padding: 28px;
+                border-radius: 16px;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+                margin: 24px 0;
+            }}
+            .filtro-form {{
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                gap: 16px;
+                align-items: end;
+            }}
+            .filtro-form label {{
+                display: block;
+                font-size: 0.85em;
+                margin-bottom: 6px;
+                color: #6b7280;
+                font-weight: 500;
+            }}
+            .filtro-form input[type="date"],
+            .filtro-form select {{
+                padding: 12px 16px;
+                border: 2px solid #e5e7eb;
+                border-radius: 10px;
+                font-size: 0.95em;
+                width: 100%;
+                font-family: 'Inter', sans-serif;
+            }}
+            .filtro-form button {{
+                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                color: white;
+                padding: 12px 24px;
+                border: none;
+                border-radius: 10px;
+                cursor: pointer;
+                font-weight: 600;
+            }}
+            .filtro-form button:hover {{
+                background: linear-gradient(135deg, #059669 0%, #047857 100%);
+                transform: translateY(-2px);
+            }}
+            .btn-limpiar {{
+                padding: 12px 24px;
+                color: #6b7280;
+                text-decoration: none;
+                border: 2px solid #e5e7eb;
+                border-radius: 10px;
+                text-align: center;
+                display: block;
+            }}
+            .graficos-container {{
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+                gap: 28px;
+                margin: 40px 0;
+            }}
+            .grafico-card {{
+                background: white;
+                padding: 28px;
+                border-radius: 16px;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin: 24px 0;
+                background: white;
+                border-radius: 12px;
+                overflow: hidden;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            }}
+            th, td {{
+                border: none;
+                border-bottom: 1px solid #e5e7eb;
+                padding: 16px 20px;
+                text-align: left;
+            }}
+            th {{
+                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                color: white;
+                font-weight: 600;
+                font-size: 0.9em;
+                text-transform: uppercase;
+            }}
+            tr:nth-child(even) {{ background-color: #f9fafb; }}
+            tr:hover {{ background-color: #ecfdf5; }}
+            .btn-export {{
+                display: inline-flex;
+                align-items: center;
+                gap: 10px;
+                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                color: white;
+                padding: 16px 32px;
+                text-decoration: none;
+                border-radius: 12px;
+                font-weight: 600;
+                box-shadow: 0 6px 20px rgba(16, 185, 129, 0.35);
+                margin: 24px 0;
+            }}
+            .btn-export:hover {{
+                transform: translateY(-3px);
+                box-shadow: 0 8px 30px rgba(16, 185, 129, 0.45);
+            }}
+            .tabla-sanidad {{
+                overflow-x: auto;
+                margin: 24px 0;
+                border-radius: 12px;
+            }}
+            .leyenda-sanidad {{
+                background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+                padding: 18px 22px;
+                border-radius: 10px;
+                margin-top: 15px;
+                font-size: 0.85em;
+                color: #6b7280;
+                border: 1px solid #e5e7eb;
+            }}
+            .footer {{
+                margin-top: 50px;
+                padding: 25px;
+                text-align: center;
+                font-size: 0.85em;
+                color: #9ca3af;
+                border-top: 2px solid #e5e7eb;
+                background: white;
+                border-radius: 12px;
+            }}
+            @media (max-width: 768px) {{
+                body {{ padding: 20px; }}
+                .tarjeta .valor {{ font-size: 1.8em; }}
+                .graficos-container {{ grid-template-columns: 1fr; }}
+            }}
             </style>
         </head>
         <body>
