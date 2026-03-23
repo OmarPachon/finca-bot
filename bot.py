@@ -8,107 +8,168 @@ import psycopg2
 import re
 import datetime
 from urllib.parse import urlparse
+# === AGREGAR DESPUÉS DE LOS IMPORTS EXISTENTES ===
+import logging
+from contextlib import contextmanager
+
+# Configurar logging básico
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    force=True
+)
+logger = logging.getLogger(__name__)
+
+# === FUNCIONES CENTRALIZADAS DE CONEXIÓN (FASE 1) ===
+_DB_URL_CACHE = None
+
+def _obtener_database_url():
+    """Obtiene y cachea la URL de la BD."""
+    global _DB_URL_CACHE
+    if _DB_URL_CACHE is None:
+        _DB_URL_CACHE = os.environ.get("DATABASE_URL")
+        if not _DB_URL_CACHE:
+            logger.error("❌ DATABASE_URL no está definida")
+            raise EnvironmentError("DATABASE_URL no configurada")
+    return _DB_URL_CACHE
+
+@contextmanager
+def obtener_conexion():
+    """Context manager para conexiones seguras a BD."""
+    conn = None
+    try:
+        database_url = _obtener_database_url()
+        conn = psycopg2.connect(database_url)
+        logger.info("🔗 Conexión a BD establecida")
+        yield conn
+        conn.commit()
+        logger.debug("✅ Transacción confirmada")
+    except Exception as e:
+        logger.error(f"❌ Error en conexión a BD: {e}")
+        if conn:
+            conn.rollback()
+            logger.warning("🔄 Transacción revertida")
+        raise
+    finally:
+        if conn:
+            conn.close()
+            logger.debug("🔌 Conexión cerrada")
+
 print("🔧 Iniciando bot.py (versión con salida_animal)...")
 
 # === 1. CONEXIÓN A POSTGRESQL CON MIGRACIÓN AUTOMÁTICA ===
+# === 1. CONEXIÓN A POSTGRESQL CON MIGRACIÓN AUTOMÁTICA ===
 def inicializar_bd():
     try:
-        database_url = os.environ.get("DATABASE_URL")
-        if not database_url:
-            print("❌ DATABASE_URL no está definida. Configúrala en Render.")
+        # Usamos la función centralizada para obtener la URL
+        database_url = _obtener_database_url()
+        conn = None
+        try:
+            conn = psycopg2.connect(database_url)
+            logger.info("🔗 BD conectada para inicialización")
+            cursor = conn.cursor()
+            
+            # === Tablas principales (LÓGICA ORIGINAL INTACTA) ===
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS fincas (
+                id SERIAL PRIMARY KEY,
+                nombre VARCHAR(100) UNIQUE NOT NULL,
+                telefono_dueño VARCHAR(25) UNIQUE NOT NULL,
+                suscripcion_activa BOOLEAN DEFAULT FALSE,
+                vencimiento_suscripcion DATE,
+                clave_secreta TEXT UNIQUE
+            )
+            ''')
+            
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS usuarios (
+                id SERIAL PRIMARY KEY,
+                telefono_whatsapp VARCHAR(25) UNIQUE NOT NULL,
+                nombre VARCHAR(100),
+                rol VARCHAR(20) NOT NULL CHECK (rol IN ('dueño', 'supervisor', 'trabajador')),
+                finca_id INTEGER NOT NULL REFERENCES fincas(id) ON DELETE CASCADE
+            )
+            ''')
+            
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS animales (
+                id SERIAL PRIMARY KEY,
+                especie TEXT NOT NULL,
+                id_externo TEXT UNIQUE NOT NULL,
+                marca_o_arete TEXT NOT NULL,
+                categoria TEXT,
+                peso REAL,
+                corral TEXT,
+                estado TEXT DEFAULT 'activo',
+                observaciones TEXT,
+                fecha_registro DATE DEFAULT CURRENT_DATE,
+                finca_id INTEGER REFERENCES fincas(id) ON DELETE SET NULL
+            )
+            ''')
+            
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS registros (
+                id SERIAL PRIMARY KEY,
+                fecha TEXT NOT NULL,
+                tipo_actividad TEXT NOT NULL,
+                accion TEXT,
+                detalle TEXT,
+                lugar TEXT,
+                cantidad REAL,
+                valor REAL,
+                unidad TEXT,
+                observacion TEXT,
+                jornales INTEGER,
+                fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                finca_id INTEGER REFERENCES fincas(id) ON DELETE SET NULL,
+                usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL
+            )
+            ''')
+            
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS salud_animal (
+                id SERIAL PRIMARY KEY,
+                id_externo TEXT NOT NULL,
+                tipo TEXT NOT NULL,
+                tratamiento TEXT,
+                fecha TEXT NOT NULL,
+                observacion TEXT,
+                finca_id INTEGER REFERENCES fincas(id) ON DELETE SET NULL,
+                FOREIGN KEY (id_externo) REFERENCES animales (id_externo)
+            )
+            ''')
+            
+            # === Migración: asegurar columna 'jornales' ===
+            cursor.execute("""
+            DO $$
+            BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name='registros' AND column_name='jornales'
+            ) THEN
+                ALTER TABLE registros ADD COLUMN jornales INTEGER;
+            END IF;
+            END $$;
+            """)
+            
+            conn.commit()
+            logger.info("✅ Tablas verificadas/creadas")
+            print("✅ Base de datos lista (multi-finca + suscripción).")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Error en inicialización: {e}")
+            if conn:
+                conn.rollback()
+            print(f"❌ Error al conectar con PostgreSQL: {e}")
             return False
-        conn = psycopg2.connect(database_url)
-        cursor = conn.cursor()
-        
-        # Tablas principales
-        cursor.execute('''
-        CREATE TABLE IF NOT EXISTS fincas (
-            id SERIAL PRIMARY KEY,
-            nombre VARCHAR(100) UNIQUE NOT NULL,
-            telefono_dueño VARCHAR(25) UNIQUE NOT NULL,
-            suscripcion_activa BOOLEAN DEFAULT FALSE,
-            vencimiento_suscripcion DATE,
-            clave_secreta TEXT UNIQUE
-        )
-        ''')
-        
-        cursor.execute('''
-        CREATE TABLE IF NOT EXISTS usuarios (
-            id SERIAL PRIMARY KEY,
-            telefono_whatsapp VARCHAR(25) UNIQUE NOT NULL,
-            nombre VARCHAR(100),
-            rol VARCHAR(20) NOT NULL CHECK (rol IN ('dueño', 'supervisor', 'trabajador')),
-            finca_id INTEGER NOT NULL REFERENCES fincas(id) ON DELETE CASCADE
-        )
-        ''')
-        
-        cursor.execute('''
-        CREATE TABLE IF NOT EXISTS animales (
-            id SERIAL PRIMARY KEY,
-            especie TEXT NOT NULL,
-            id_externo TEXT UNIQUE NOT NULL,
-            marca_o_arete TEXT NOT NULL,
-            categoria TEXT,
-            peso REAL,
-            corral TEXT,
-            estado TEXT DEFAULT 'activo',
-            observaciones TEXT,
-            fecha_registro DATE DEFAULT CURRENT_DATE,
-            finca_id INTEGER REFERENCES fincas(id) ON DELETE SET NULL
-        )
-        ''')
-        
-        cursor.execute('''
-        CREATE TABLE IF NOT EXISTS registros (
-            id SERIAL PRIMARY KEY,
-            fecha TEXT NOT NULL,
-            tipo_actividad TEXT NOT NULL,
-            accion TEXT,
-            detalle TEXT,
-            lugar TEXT,
-            cantidad REAL,
-            valor REAL,
-            unidad TEXT,
-            observacion TEXT,
-            jornales INTEGER,
-            fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            finca_id INTEGER REFERENCES fincas(id) ON DELETE SET NULL,
-            usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL
-        )
-        ''')
-        
-        cursor.execute('''
-        CREATE TABLE IF NOT EXISTS salud_animal (
-            id SERIAL PRIMARY KEY,
-            id_externo TEXT NOT NULL,
-            tipo TEXT NOT NULL,
-            tratamiento TEXT,
-            fecha TEXT NOT NULL,
-            observacion TEXT,
-            finca_id INTEGER REFERENCES fincas(id) ON DELETE SET NULL,
-            FOREIGN KEY (id_externo) REFERENCES animales (id_externo)
-        )
-        ''')
-        
-        # Migración: asegurar columna 'jornales'
-        cursor.execute("""
-        DO $$
-        BEGIN
-        IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns 
-            WHERE table_name='registros' AND column_name='jornales'
-        ) THEN
-            ALTER TABLE registros ADD COLUMN jornales INTEGER;
-        END IF;
-        END $$;
-        """)
-        
-        conn.commit()
-        conn.close()
-        print("✅ Base de datos lista (multi-finca + suscripción).")
-        return True
+        finally:
+            if conn:
+                conn.close()
+                
     except Exception as e:
-        print(f"❌ Error al conectar con PostgreSQL: {e}")
+        logger.error(f"❌ Error crítico al conectar: {e}")
+        print(f"❌ Error crítico al inicializar BD: {e}")
         return False
 
 try:
