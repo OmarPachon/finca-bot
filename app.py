@@ -438,7 +438,7 @@ def dashboard_finca(clave):
                 font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
                 max-width: 1400px;
                 margin: 0 auto;
-                padding: 32px;
+                padding: 24px;
                 background: #f3f4f6;
                 color: #1f2937;
                 line-height: 1.6;
@@ -446,196 +446,265 @@ def dashboard_finca(clave):
             h1 {{ 
                 color: #059669; 
                 text-align: center; 
-                margin-bottom: 10px;
-                font-size: 2em;
+                margin-bottom: 8px;
+                font-size: 1.8em;
                 font-weight: 700;
             }}
             h2 {{ 
                 color: #059669; 
-                font-size: 1.4em; 
-                margin-top: 40px;
-                margin-bottom: 20px;
+                font-size: 1.2em; 
+                margin-top: 32px;
+                margin-bottom: 16px;
                 font-weight: 600;
             }}
             h3 {{ 
                 color: #374151; 
                 font-size: 1.1em; 
-                margin: 0 0 15px 0;
+                margin: 0 0 12px 0;
                 font-weight: 600;
             }}
             .resumen {{
                 display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-                gap: 24px;
-                margin: 32px 0;
+                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                gap: 16px;
+                margin: 24px 0;
             }}
             .tarjeta {{
                 background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
-                padding: 28px;
-                border-radius: 16px;
-                box-shadow: 0 10px 40px rgba(0,0,0,0.1);
-                border-left: 6px solid;
+                padding: 20px;
+                border-radius: 12px;
+                box-shadow: 0 4px 40px rgba(0,0,0,0.08);
+                border-left: 5px solid;
                 transition: all 0.3s ease;
             }}
             .tarjeta:hover {{ 
-                transform: translateY(-5px);
-                box-shadow: 0 15px 50px rgba(0,0,0,0.15);
+                transform: translateY(-3px);
+                box-shadow: 0 15px 50px rgba(0,0,0,0.12);
             }}
             .tarjeta.ingresos {{ border-left-color: #10b981; }}
             .tarjeta.gastos {{ border-left-color: #ef4444; }}
             .tarjeta.balance {{ border-left-color: #3b82f6; }}
             .tarjeta h3 {{ 
                 color: #6b7280; 
-                font-size: 0.85em; 
+                font-size: 0.8em; 
                 text-transform: uppercase; 
-                letter-spacing: 1.2px;
+                letter-spacing: 0.8px;
                 font-weight: 600;
+                margin-bottom: 8px;
             }}
             .tarjeta .valor {{
-                font-size: 2.2em;
+                font-size: 1.6em;
                 font-weight: 700;
                 color: #1f2937;
-                margin: 12px 0;
+                margin: 8px 0;
+                letter-spacing: -0.5px;
             }}
             .tarjeta.ingresos .valor {{ color: #10b981; }}
             .tarjeta.gastos .valor {{ color: #ef4444; }}
             .tarjeta.balance .valor {{ color: #3b82f6; }}
             .tarjeta small {{
                 color: #9ca3af;
-                font-size: 0.9em;
+                font-size: 0.85em;
             }}
             .filtro-fechas {{
                 background: white;
-                padding: 28px;
-                border-radius: 16px;
-                box-shadow: 0 10px 40px rgba(0,0,0,0.1);
-                margin: 24px 0;
+                padding: 20px;
+                border-radius: 12px;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+                margin: 20px 0;
+            }}
+            .filtro-fechas h3 {{
+                margin: 20px 0;
+                color: #1f2937;
+                font-weight: 600;
+                font-size: 1em;
             }}
             .filtro-form {{
                 display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-                gap: 16px;
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                gap: 12px;
                 align-items: end;
             }}
             .filtro-form label {{
                 display: block;
-                font-size: 0.85em;
-                margin-bottom: 6px;
+                font-size: 0.8em;
+                margin-bottom: 4px;
                 color: #6b7280;
                 font-weight: 500;
             }}
             .filtro-form input[type="date"],
             .filtro-form select {{
-                padding: 12px 16px;
-                border: 2px solid #e5e7eb;
-                border-radius: 10px;
-                font-size: 0.95em;
+                padding: 10px 12px;
+                border: 1px solid #e5e7eb;
+                border-radius: 8px;
+                font-size: 0.9em;
                 width: 100%;
                 font-family: 'Inter', sans-serif;
+                background: white;
             }}
             .filtro-form button {{
                 background: linear-gradient(135deg, #10b981 0%, #059669 100%);
                 color: white;
-                padding: 12px 24px;
+                padding: 10px 20px;
                 border: none;
-                border-radius: 10px;
+                border-radius: 8px;
                 cursor: pointer;
+                font-size: 0.9em;
                 font-weight: 600;
+                white-space: nowrap;
             }}
             .filtro-form button:hover {{
                 background: linear-gradient(135deg, #059669 0%, #047857 100%);
-                transform: translateY(-2px);
+                
             }}
             .btn-limpiar {{
-                padding: 12px 24px;
+                padding: 10px 20px;
                 color: #6b7280;
                 text-decoration: none;
-                border: 2px solid #e5e7eb;
-                border-radius: 10px;
+                border: 1px solid #e5e7eb;
+                border-radius: 8px;
                 text-align: center;
                 display: block;
+                background: white;
+            }}
+            .btn-limpiar:hover {{
+                background: #f9fafb;
+                color: #10b981;
+                border-color: #10b981;
+            }}
+            .filtros-activos {{
+                background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+                border: 1px solid #10b981;
+                padding: 10px 14px;
+                border-radius: 8px;
+                margin: 16px 0 0 0;
+                font-size: 0.85em;
+                color: #065f46;
+                font-weight: 500;
+            }}
+            .filtros-activos strong {{
+                color: #059669;
             }}
             .graficos-container {{
                 display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
-                gap: 28px;
-                margin: 40px 0;
+                grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+                gap: 20px;
+                margin: 32px 0;
             }}
             .grafico-card {{
                 background: white;
-                padding: 28px;
-                border-radius: 16px;
-                box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+                padding: 20px;
+                border-radius: 12px;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            }}
+            .grafico-card h3 {{
+                margin-top: 0;
+                color: #1f2937;
+                font-weight: 600;
+                font-size: 1em;
             }}
             table {{
                 width: 100%;
                 border-collapse: collapse;
-                margin: 24px 0;
+                margin: 16px 0;
                 background: white;
-                border-radius: 12px;
+                border-radius: 8px;
                 overflow: hidden;
-                box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+                box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+                display: block;
+                overflow-x: auto;
+            }}
+            thead {{
+                display: table-header-group;
+                width: 100%;
+            }}
+            tbody {{
+                display: table-row-group;
+                width: 100%;
             }}
             th, td {{
                 border: none;
                 border-bottom: 1px solid #e5e7eb;
-                padding: 16px 20px;
+                padding: 12px 16px;
                 text-align: left;
+                white-space: nowrap;
+                font-size: 0.9em;
             }}
             th {{
                 background: linear-gradient(135deg, #10b981 0%, #059669 100%);
                 color: white;
                 font-weight: 600;
-                font-size: 0.9em;
+                font-size: 0.85em;
                 text-transform: uppercase;
+                letter-spacing: 0.5px;
+                position: sticky;
+                left: 0;
             }}
             tr:nth-child(even) {{ background-color: #f9fafb; }}
             tr:hover {{ background-color: #ecfdf5; }}
+            tr:last-child td {{ border-bottom: none; }}
             .btn-export {{
                 display: inline-flex;
                 align-items: center;
-                gap: 10px;
+                gap: 8px;
                 background: linear-gradient(135deg, #10b981 0%, #059669 100%);
                 color: white;
-                padding: 16px 32px;
+                padding: 12px 24px;
                 text-decoration: none;
-                border-radius: 12px;
+                border-radius: 10px;
                 font-weight: 600;
-                box-shadow: 0 6px 20px rgba(16, 185, 129, 0.35);
-                margin: 24px 0;
+                box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+                margin: 16px 0;
             }}
             .btn-export:hover {{
-                transform: translateY(-3px);
-                box-shadow: 0 8px 30px rgba(16, 185, 129, 0.45);
+                transform: translateY(-2px);
+                box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
             }}
             .tabla-sanidad {{
                 overflow-x: auto;
-                margin: 24px 0;
-                border-radius: 12px;
+                margin: 16px 0;
+                border-radius: 8px;
+                -webkit-overflow-scrolling: touch;
+            }}
+            .tabla-sanidad table {{
+                font-size: 0.85em;
+                min-width: 900px;
+            }}
+            .tabla-sanidad th, .tabla-sanidad td {{
+                padding: 10px 14px;
             }}
             .leyenda-sanidad {{
                 background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
-                padding: 18px 22px;
-                border-radius: 10px;
-                margin-top: 15px;
-                font-size: 0.85em;
+                padding: 14px 18px;
+                border-radius: 8px;
+                margin-top: 12px;
+                font-size: 0.8em;
                 color: #6b7280;
                 border: 1px solid #e5e7eb;
             }}
+            .leyenda-sanidad strong {{
+                color: #374151;
+            }}
             .footer {{
-                margin-top: 50px;
-                padding: 25px;
+                margin-top: 40px;
+                padding: 20px;
                 text-align: center;
-                font-size: 0.85em;
+                font-size: 0.8em;
                 color: #9ca3af;
-                border-top: 2px solid #e5e7eb;
+                border-top: 1px solid #e5e7eb;
                 background: white;
-                border-radius: 12px;
+                border-radius: 8px;
             }}
             @media (max-width: 768px) {{
-                body {{ padding: 20px; }}
-                .tarjeta .valor {{ font-size: 1.8em; }}
+                body {{ padding: 16px; }}
+                h1 {{ font-size: 1.5em; }}
+                .tarjeta .valor {{ font-size: 1.4em; }}
+                .resumen {{ grid-template-columns: repeat(2, 1fr); }}
                 .graficos-container {{ grid-template-columns: 1fr; }}
+                .filtro-form {{ grid-template-columns: 1fr; }}
+                th, td {{ padding: 10px 12px; font-size: 0.85em; }}
+                .tabla-sanidad table {{ font-size: 0.75em; min-width: 800px; }}
+                .btn-export {{ padding: 10px 20px; font-size: 0.85em; }}
             }}
             </style>
         </head>
