@@ -1590,7 +1590,7 @@ def ingreso_manual_datos(clave):
                         <div class="form-group" id="group-valor">
                             <label>💰 Valor Total (COP)</label>
                             <input type="text" name="valor" id="valor" value="0" pattern="[0-9]*" oninput="this.value = this.value.replace(/[^0-9]/g, '')" placeholder="Ej: 500000">
-                            <small>Solo números. Ej: 1500000 para 1.5 millones</small>
+                            <small style="color: #6c757d; font-size: 0.85em; margin-top: 6px;"> Solo números. Ej: 700000 para setecientos mil </small>
                         </div>
                     </div>
                     
