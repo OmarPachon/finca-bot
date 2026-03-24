@@ -1746,10 +1746,16 @@ def guardar_manual_datos(clave):
 
         try:
             cantidad = float(cantidad) if cantidad else None
+        except (ValueError, TypeError):
+            cantidad = None
+        try:
             valor = float(valor) if valor else 0
+        except (ValueError, TypeError):
+            valor = 0
+        try:
             jornales = int(float(jornales)) if jornales else 0
-        except:
-            pass
+        except (ValueError, TypeError):
+            jornales = 0
 
         if not tipo or not detalle:
             return "❌ Tipo y detalle son obligatorios", 400
@@ -2095,7 +2101,7 @@ def guardar_manual_datos(clave):
                         </div>
                         <div class="info-row">
                             <span class="label">💰 Valor</span>
-                            <span class="value destacado">${valor:,.0f} COP</span>
+                            <span class="value destacado">${int(float(valor)):,} COP</span>
                         </div>
                         <div class="info-row">
                             <span class="label">📍 Lugar</span>
