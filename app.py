@@ -1756,6 +1756,9 @@ def guardar_manual_datos(clave):
             jornales = int(float(jornales)) if jornales else 0
         except (ValueError, TypeError):
             jornales = 0
+            
+        # DEBUG: Verifica qué valor llega
+        print(f"🔍 DEBUG: valor={valor} (tipo: {type(valor).__name__})")
 
         if not tipo or not detalle:
             return "❌ Tipo y detalle son obligatorios", 400
