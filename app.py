@@ -1179,7 +1179,7 @@ def exportar_finca_excel(clave):
         return f"❌ Error: {e}", 500
 
 # ============================================================================
-# === RUTA: FORMULARIO WEB PROFESIONAL PARA INGRESO MANUAL DE DATOS ===
+# === RUTA: FORMULARIO WEB PROFESIONAL PARA INGRESO MANUAL DE DATOS (MEJORADO) ===
 # ============================================================================
 @app.route("/finca/<clave>/ingreso-manual")
 def ingreso_manual_datos(clave):
@@ -1187,175 +1187,519 @@ def ingreso_manual_datos(clave):
         database_url = os.environ.get("DATABASE_URL")
         if not database_url:
             return "❌ DATABASE_URL no configurada", 500
-
+        
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT nombre, id FROM fincas WHERE clave_secreta = %s", (clave,))
                 finca_row = cur.fetchone()
                 if not finca_row:
                     return "❌ Acceso denegado. URL inválida.", 403
+                
                 nombre_finca, finca_id = finca_row
-
-        html = f"""
-        <!DOCTYPE html>
-        <html lang="es">
-        <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>Ingreso Manual - {nombre_finca} | Finca Digital</title>
-            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-            <style>
-                * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-                body {{
-                    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    min-height: 100vh;
-                    padding: 40px 20px;
-                }}
-                .container {{ max-width: 800px; margin: 0 auto; }}
-                .header {{ text-align: center; margin-bottom: 40px; color: white; }}
-                .header h1 {{ font-size: 2.5em; font-weight: 700; margin-bottom: 10px; }}
-                .form-card {{
-                    background: white;
-                    border-radius: 20px;
-                    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-                    overflow: hidden;
-                }}
-                .form-header {{
-                    background: linear-gradient(135deg, #198754 0%, #146c43 100%);
-                    color: white;
-                    padding: 30px;
-                    text-align: center;
-                }}
-                .form-body {{ padding: 40px; }}
-                .form-group {{ margin-bottom: 25px; }}
-                .form-group label {{
-                    display: block;
-                    font-weight: 600;
-                    color: #2c3e50;
-                    margin-bottom: 8px;
-                }}
-                .form-group input,
-                .form-group select,
-                .form-group textarea {{
-                    width: 100%;
-                    padding: 14px 18px;
-                    border: 2px solid #e9ecef;
-                    border-radius: 12px;
-                    font-size: 1em;
-                }}
-                .form-group textarea {{ resize: vertical; min-height: 100px; }}
-                .form-row {{
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-                    gap: 20px;
-                }}
-                .btn-submit {{
-                    background: linear-gradient(135deg, #198754 0%, #146c43 100%);
-                    color: white;
-                    border: none;
-                    padding: 18px 40px;
-                    font-size: 1.1em;
-                    font-weight: 600;
-                    border-radius: 12px;
-                    cursor: pointer;
-                    width: 100%;
-                }}
-                .btn-back {{
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 8px;
-                    color: #6c757d;
-                    text-decoration: none;
-                    margin-top: 25px;
-                    padding: 12px 20px;
-                    border: 2px solid #e9ecef;
-                    border-radius: 10px;
-                }}
-                .info-box {{
-                    background: linear-gradient(135deg, #e9f7ef 0%, #d4edda 100%);
-                    border-left: 4px solid #28a745;
-                    padding: 20px;
-                    border-radius: 10px;
-                    margin-bottom: 30px;
-                }}
-                .info-box ul {{ color: #155724; margin-left: 20px; }}
-                @media (max-width: 768px) {{
-                    .form-row {{ grid-template-columns: 1fr; }}
-                }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>🌱 Finca Digital</h1>
-                    <p>Registro manual de actividades - {nombre_finca}</p>
+                
+                # === OBTENER LUGARES FRECUENTES PARA AUTO-SUGERENCIA ===
+                cur.execute("""
+                    SELECT DISTINCT lugar FROM registros
+                    WHERE finca_id = %s AND lugar IS NOT NULL
+                    ORDER BY lugar
+                    LIMIT 10
+                """, (finca_id,))
+                lugares_frecuentes = [row[0] for row in cur.fetchall()]
+                
+                # === OBTENER ANIMALES ACTIVOS PARA SELECCIÓN RÁPIDA ===
+                cur.execute("""
+                    SELECT marca_o_arete, especie FROM animales
+                    WHERE finca_id = %s AND estado = 'activo'
+                    ORDER BY especie, marca_o_arete
+                    LIMIT 50
+                """, (finca_id,))
+                animales_activos = cur.fetchall()
+                
+                html = f"""
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Ingreso Manual - {nombre_finca} | Finca Digital</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        body {{
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }}
+        .container {{ max-width: 900px; margin: 0 auto; }}
+        
+        /* HEADER */
+        .header {{ 
+            text-align: center; 
+            margin-bottom: 30px; 
+            color: white; 
+        }}
+        .header h1 {{ 
+            font-size: 2.2em; 
+            font-weight: 700; 
+            margin-bottom: 8px; 
+            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }}
+        .header p {{ 
+            font-size: 1.1em; 
+            opacity: 0.95; 
+        }}
+        
+        /* BREADCRUMBS */
+        .breadcrumbs {{
+            background: rgba(255,255,255,0.15);
+            padding: 12px 20px;
+            border-radius: 10px;
+            margin-bottom: 25px;
+            backdrop-filter: blur(10px);
+        }}
+        .breadcrumbs a {{
+            color: white;
+            text-decoration: none;
+            font-weight: 500;
+            transition: opacity 0.2s;
+        }}
+        .breadcrumbs a:hover {{ opacity: 0.8; }}
+        .breadcrumbs span {{ color: rgba(255,255,255,0.7); }}
+        
+        /* FORM CARD */
+        .form-card {{
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }}
+        .form-header {{
+            background: linear-gradient(135deg, #198754 0%, #146c43 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }}
+        .form-header h2 {{ 
+            font-size: 1.8em; 
+            font-weight: 600; 
+        }}
+        .form-header p {{ 
+            opacity: 0.9; 
+            margin-top: 8px; 
+        }}
+        .form-body {{ padding: 40px; }}
+        
+        /* FORM GROUPS */
+        .form-group {{ margin-bottom: 25px; }}
+        .form-group label {{
+            display: block;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 8px;
+            font-size: 0.95em;
+        }}
+        .form-group label .required {{
+            color: #dc3545;
+            margin-left: 3px;
+        }}
+        .form-group input,
+        .form-group select,
+        .form-group textarea {{
+            width: 100%;
+            padding: 14px 18px;
+            border: 2px solid #e9ecef;
+            border-radius: 12px;
+            font-size: 1em;
+            transition: all 0.2s;
+            font-family: inherit;
+        }}
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {{
+            outline: none;
+            border-color: #198754;
+            box-shadow: 0 0 0 3px rgba(25, 135, 84, 0.15);
+        }}
+        .form-group textarea {{ 
+            resize: vertical; 
+            min-height: 100px; 
+        }}
+        .form-group small {{
+            display: block;
+            color: #6c757d;
+            font-size: 0.85em;
+            margin-top: 6px;
+        }}
+        
+        /* FORM ROW */
+        .form-row {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }}
+        
+        /* CAMPOS DINÁMICOS */
+        .campo-dinamico {{
+            display: none;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 20px;
+            border-radius: 12px;
+            margin-top: 15px;
+            border-left: 4px solid #198754;
+        }}
+        .campo-dinamico.activo {{
+            display: block;
+            animation: slideDown 0.3s ease;
+        }}
+        @keyframes slideDown {{
+            from {{ opacity: 0; transform: translateY(-10px); }}
+            to {{ opacity: 1; transform: translateY(0); }}
+        }}
+        
+        /* BOTONES */
+        .btn-submit {{
+            background: linear-gradient(135deg, #198754 0%, #146c43 100%);
+            color: white;
+            border: none;
+            padding: 18px 40px;
+            font-size: 1.1em;
+            font-weight: 600;
+            border-radius: 12px;
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.2s;
+            box-shadow: 0 4px 15px rgba(25, 135, 84, 0.3);
+        }}
+        .btn-submit:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(25, 135, 84, 0.4);
+        }}
+        .btn-submit:active {{
+            transform: translateY(0);
+        }}
+        
+        /* BOTÓN VOLVER */
+        .btn-back {{
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: #6c757d;
+            text-decoration: none;
+            margin-top: 25px;
+            padding: 12px 20px;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            transition: all 0.2s;
+            font-weight: 500;
+        }}
+        .btn-back:hover {{
+            background: #f8f9fa;
+            color: #198754;
+            border-color: #198754;
+        }}
+        
+        /* INFO BOX */
+        .info-box {{
+            background: linear-gradient(135deg, #e9f7ef 0%, #d4edda 100%);
+            border-left: 4px solid #28a745;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }}
+        .info-box h4 {{ 
+            color: #155724; 
+            margin-bottom: 12px; 
+            font-size: 1em;
+        }}
+        .info-box ul {{ 
+            color: #155724; 
+            margin-left: 20px; 
+            font-size: 0.9em;
+        }}
+        .info-box li {{ margin-bottom: 6px; }}
+        .info-box code {{
+            background: rgba(0,0,0,0.08);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }}
+        
+        /* SUGERENCIAS */
+        .sugerencias-container {{
+            margin-top: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }}
+        .sugerencia-tag {{
+            background: #e9ecef;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: #495057;
+        }}
+        .sugerencia-tag:hover {{
+            background: #198754;
+            color: white;
+        }}
+        
+        /* VALIDACIÓN */
+        .form-group.error input,
+        .form-group.error select,
+        .form-group.error textarea {{
+            border-color: #dc3545;
+        }}
+        .error-message {{
+            color: #dc3545;
+            font-size: 0.85em;
+            margin-top: 6px;
+            display: none;
+        }}
+        .form-group.error .error-message {{
+            display: block;
+        }}
+        
+        /* RESPONSIVE */
+        @media (max-width: 768px) {{
+            body {{ padding: 20px 10px; }}
+            .form-body {{ padding: 25px; }}
+            .form-row {{ grid-template-columns: 1fr; }}
+            .header h1 {{ font-size: 1.8em; }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- BREADCRUMBS -->
+        <div class="breadcrumbs">
+            <a href="/finca/{clave}">📊 Dashboard</a>
+            <span> / </span>
+            <a href="/finca/{clave}/ingreso-manual">📝 Ingreso Manual</a>
+        </div>
+        
+        <div class="header">
+            <h1>🌱 Finca Digital</h1>
+            <p>Registro manual de actividades - <strong>{nombre_finca}</strong></p>
+        </div>
+        
+        <div class="form-card">
+            <div class="form-header">
+                <h2>📝 Nueva Actividad</h2>
+                <p>Completa el formulario para registrar un movimiento</p>
+            </div>
+            
+            <div class="form-body">
+                <!-- INFO BOX -->
+                <div class="info-box">
+                    <h4>💡 Consejos para un registro efectivo:</h4>
+                    <ul>
+                        <li>Para <strong>animales</strong>, usa el formato: <code>marca LG01 peso 450 kg</code></li>
+                        <li>Para <strong>gastos</strong>, especifica el concepto claramente (ej: "Compra de concentrado")</li>
+                        <li>Para <strong>sanidad</strong>, incluye el tipo de tratamiento y animal afectado</li>
+                        <li>Los campos marcados con <span class="required">*</span> son obligatorios</li>
+                    </ul>
                 </div>
-                <div class="form-card">
-                    <div class="form-header">
-                        <h2>📝 Nueva Actividad</h2>
+                
+                <!-- FORMULARIO -->
+                <form method="POST" action="/finca/{clave}/guardar-manual" id="registroForm" novalidate>
+                    
+                    <!-- TIPO DE ACTIVIDAD -->
+                    <div class="form-group" id="group-tipo">
+                        <label>📋 Tipo de Actividad <span class="required">*</span></label>
+                        <select name="tipo" id="tipo" required onchange="mostrarCamposDinamicos()">
+                            <option value="">Selecciona una opción...</option>
+                            <option value="siembra">🌱 Siembra</option>
+                            <option value="produccion">🌾 Producción / Cosecha</option>
+                            <option value="sanidad_animal">💉 Sanidad Animal</option>
+                            <option value="ingreso_animal">🐷 Ingreso de Animales</option>
+                            <option value="salida_animal">🐄 Salida / Venta de Animales</option>
+                            <option value="gasto">💰 Gasto / Compra</option>
+                            <option value="labor">🛠️ Labor / Jornal</option>
+                        </select>
+                        <small class="error-message">Por favor selecciona un tipo de actividad</small>
                     </div>
-                    <div class="form-body">
-                        <div class="info-box">
-                            <h4>💡 Consejos:</h4>
-                            <ul>
-                                <li>Para <strong>animales</strong>, incluye marcas: <code>marca LG01 peso 450 kg</code></li>
-                                <li>Para <strong>gastos</strong>, especifica el concepto claramente</li>
-                            </ul>
+                    
+                    <!-- CAMPOS DINÁMICOS PARA ANIMALES -->
+                    <div id="campos-animales" class="campo-dinamico">
+                        <h4 style="margin-bottom: 15px; color: #2c3e50;">🐮 Información de Animales</h4>
+                        
+                        <div class="form-group">
+                            <label>🏷️ Seleccionar Animal (opcional)</label>
+                            <select name="animal_seleccion" id="animal_seleccion">
+                                <option value="">-- Buscar animal registrado --</option>
+                                {"".join(f'<option value="{marca}">{marca} - {especie.title()}</option>' for marca, especie in animales_activos)}
+                            </select>
+                            <small>Si seleccionas un animal, se completará automáticamente en la observación</small>
                         </div>
-                        <form method="POST" action="/finca/{clave}/guardar-manual" id="registroForm">
+                        
+                        <div class="form-row">
                             <div class="form-group">
-                                <label>📋 Tipo de Actividad *</label>
-                                <select name="tipo" required>
-                                    <option value="">Selecciona...</option>
-                                    <option value="siembra">🌱 Siembra</option>
-                                    <option value="produccion">🌾 Producción</option>
-                                    <option value="sanidad_animal">💉 Sanidad Animal</option>
-                                    <option value="ingreso_animal">🐷 Ingreso Animales</option>
-                                    <option value="salida_animal">🐄 Salida Animales</option>
-                                    <option value="gasto">💰 Gasto</option>
-                                    <option value="labor">🛠️ Labor</option>
-                                </select>
+                                <label>⚖️ Peso Promedio (kg)</label>
+                                <input type="number" name="peso_promedio" step="0.1" min="0" placeholder="Ej: 450">
                             </div>
                             <div class="form-group">
-                                <label>📦 Detalle *</label>
-                                <input type="text" name="detalle" required>
+                                <label>📊 Cantidad de Animales</label>
+                                <input type="number" name="cantidad_animales" min="1" value="1">
                             </div>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label>🔢 Cantidad</label>
-                                    <input type="number" name="cantidad" step="0.1" min="0">
-                                </div>
-                                <div class="form-group">
-                                    <label>💰 Valor (COP)</label>
-                                    <input type="number" name="valor" value="0" min="0">
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label>📍 Lugar</label>
-                                <input type="text" name="lugar">
-                            </div>
-                            <div class="form-group">
-                                <label>📝 Observación</label>
-                                <textarea name="observacion" placeholder="marca LG01 peso 450 kg"></textarea>
-                            </div>
-                            <div class="form-group">
-                                <label>👷 Jornales</label>
-                                <input type="number" name="jornales" value="0" min="0">
-                            </div>
-                            <button type="submit" class="btn-submit">✅ Guardar Registro</button>
-                        </form>
-                        <div style="text-align: center;">
-                            <a href="/finca/{clave}" class="btn-back">← Volver al Dashboard</a>
                         </div>
                     </div>
+                    
+                    <!-- CAMPOS DINÁMICOS PARA SANIDAD -->
+                    <div id="campos-sanidad" class="campo-dinamico">
+                        <h4 style="margin-bottom: 15px; color: #2c3e50;">💉 Detalles de Sanidad</h4>
+                        
+                        <div class="form-group">
+                            <label>🧪 Tipo de Tratamiento</label>
+                            <select name="tipo_sanidad" id="tipo_sanidad">
+                                <option value="">Selecciona...</option>
+                                <option value="vacuna">💉 Vacunación</option>
+                                <option value="desparasitacion">🪱 Desparasitación</option>
+                                <option value="reproduccion">🤰 Reproducción</option>
+                                <option value="tratamiento">🏥 Tratamiento Médico</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- DETALLE -->
+                    <div class="form-group" id="group-detalle">
+                        <label>📦 Detalle de la Actividad <span class="required">*</span></label>
+                        <input type="text" name="detalle" id="detalle" required placeholder="Ej: Compra de concentrado, Vacunación aftosa, Venta de 2 novillos...">
+                        <small class="error-message">El detalle es obligatorio</small>
+                    </div>
+                    
+                    <!-- FILA: CANTIDAD Y VALOR -->
+                    <div class="form-row">
+                        <div class="form-group" id="group-cantidad">
+                            <label>🔢 Cantidad</label>
+                            <input type="number" name="cantidad" id="cantidad" step="0.1" min="0" placeholder="Ej: 10">
+                            <small>Unidades, kilogramos, litros, etc.</small>
+                        </div>
+                        <div class="form-group" id="group-valor">
+                            <label>💰 Valor Total (COP)</label>
+                            <input type="number" name="valor" id="valor" value="0" min="0" placeholder="Ej: 500000">
+                            <small>Deja en 0 si no aplica</small>
+                        </div>
+                    </div>
+                    
+                    <!-- LUGAR -->
+                    <div class="form-group" id="group-lugar">
+                        <label>📍 Lugar / Corral</label>
+                        <input type="text" name="lugar" id="lugar" placeholder="Ej: Corral 1, Potrero Norte, Bodega...">
+                        {f'<div class="sugerencias-container">{" ".join(f"<span class=\\"sugerencia-tag\\" onclick=\\"copiarSugerencia(this)\\">{lugar}</span>" for lugar in lugares_frecuentes)}</div>' if lugares_frecuentes else ''}
+                    </div>
+                    
+                    <!-- OBSERVACIÓN -->
+                    <div class="form-group" id="group-observacion">
+                        <label>📝 Observación</label>
+                        <textarea name="observacion" id="observacion" placeholder="Ej: marca LG01 peso 450 kg, marca LG02 peso 480 kg..."></textarea>
+                        <small>Para animales: usa el formato <code>marca XXX peso YYY kg</code></small>
+                    </div>
+                    
+                    <!-- JORNALES -->
+                    <div class="form-group" id="group-jornales">
+                        <label>👷 Número de Jornales</label>
+                        <input type="number" name="jornales" id="jornales" value="0" min="0" placeholder="Ej: 2">
+                        <small>Si la actividad involucra pago por jornales</small>
+                    </div>
+                    
+                    <!-- BOTÓN SUBMIT -->
+                    <button type="submit" class="btn-submit" id="btnSubmit">
+                        ✅ Guardar Registro
+                    </button>
+                </form>
+                
+                <!-- BOTÓN VOLVER -->
+                <div style="text-align: center;">
+                    <a href="/finca/{clave}" class="btn-back">← Volver al Dashboard</a>
                 </div>
             </div>
-        </body>
-        </html>
-        """
-        return html
-
+        </div>
+    </div>
+    
+    <!-- SCRIPTS -->
+    <script>
+        // === MOSTRAR CAMPOS DINÁMICOS SEGÚN TIPO ===
+        function mostrarCamposDinamicos() {{
+            const tipo = document.getElementById('tipo').value;
+            const camposAnimales = document.getElementById('campos-animales');
+            const camposSanidad = document.getElementById('campos-sanidad');
+            
+            // Ocultar todos
+            camposAnimales.classList.remove('activo');
+            camposSanidad.classList.remove('activo');
+            
+            // Mostrar según tipo
+            if (['ingreso_animal', 'salida_animal'].includes(tipo)) {{
+                camposAnimales.classList.add('activo');
+            }}
+            if (tipo === 'sanidad_animal') {{
+                camposAnimales.classList.add('activo');
+                camposSanidad.classList.add('activo');
+            }}
+        }}
+        
+        // === COPIAR SUGERENCIA AL INPUT ===
+        function copiarSugerencia(element) {{
+            document.getElementById('lugar').value = element.textContent;
+            document.getElementById('lugar').focus();
+        }}
+        
+        // === SELECCIONAR ANIMAL AUTOMÁTICAMENTE ===
+        document.getElementById('animal_seleccion')?.addEventListener('change', function() {{
+            const marca = this.value;
+            if (marca) {{
+                const observacion = document.getElementById('observacion');
+                const current = observacion.value.trim();
+                observacion.value = current ? current + ', marca ' + marca : 'marca ' + marca;
+            }}
+        }});
+        
+        // === VALIDACIÓN DEL FORMULARIO ===
+        document.getElementById('registroForm').addEventListener('submit', function(e) {{
+            let valido = true;
+            
+            // Limpiar errores previos
+            document.querySelectorAll('.form-group').forEach(g => g.classList.remove('error'));
+            
+            // Validar tipo
+            const tipo = document.getElementById('tipo');
+            if (!tipo.value) {{
+                document.getElementById('group-tipo').classList.add('error');
+                valido = false;
+            }}
+            
+            // Validar detalle
+            const detalle = document.getElementById('detalle');
+            if (!detalle.value.trim()) {{
+                document.getElementById('group-detalle').classList.add('error');
+                valido = false;
+            }}
+            
+            // Si no es válido, prevenir envío
+            if (!valido) {{
+                e.preventDefault();
+                document.getElementById('btnSubmit').textContent = '⚠️ Completa los campos obligatorios';
+                setTimeout(() => {{
+                    document.getElementById('btnSubmit').textContent = '✅ Guardar Registro';
+                }}, 3000);
+            }}
+        }});
+        
+        // === FORMATEAR VALOR AL ESCRIBIR ===
+        document.getElementById('valor')?.addEventListener('input', function(e) {{
+            let val = this.value.replace(/[^0-9]/g, '');
+            if (val) {{
+                this.value = parseInt(val).toLocaleString('es-CO');
+            }}
+        }});
+    </script>
+</body>
+</html>
+"""
+                return html
     except Exception as e:
         print(f"❌ Error formulario manual: {e}")
         return f"❌ Error: {e}", 500
