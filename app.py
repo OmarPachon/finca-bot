@@ -2157,9 +2157,7 @@ def guardar_manual_datos(clave):
                         </a>
                     </div>
                     
-                    <!-- HISTORIAL RECIENTE -->
-                    <div class="historial">
-                        <h3>📜 Últimos 3 Registros</h3>
+                    
             """
 
             # === OBTENER ÚLTIMOS 3 REGISTROS PARA EL HISTORIAL ===
@@ -2201,11 +2199,7 @@ def guardar_manual_datos(clave):
             html += """
                     </div>
                     
-                    <div style="text-align: center; margin-top: 25px;">
-                        <a href="/finca/{clave}" style="color: #6c757d; text-decoration: none; font-size: 0.9em;">
-                            ← Volver al Dashboard
-                        </a>
-                    </div>
+                    
                 </div>
             </body>
             </html>
