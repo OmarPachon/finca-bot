@@ -1206,6 +1206,16 @@ def ingreso_manual_datos(clave):
                 """, (finca_id,))
                 lugares_frecuentes = [row[0] for row in cur.fetchall()]
                 
+                # === GENERAR HTML DE SUGERENCIAS (fuera del f-string principal) ===
+                if lugares_frecuentes:
+                    sugerencias_html = "".join(
+                    f'<span class="sugerencia-tag" onclick="copiarSugerencia(this)">{lugar}</span>'
+                    for lugar in lugares_frecuentes
+                    )
+                    sugerencias_container = f'<div class="sugerencias-container">{sugerencias_html}</div>'
+                else:
+                    sugerencias_container = ''
+                
                 # === OBTENER ANIMALES ACTIVOS PARA SELECCIÓN RÁPIDA ===
                 cur.execute("""
                     SELECT marca_o_arete, especie FROM animales
@@ -1588,7 +1598,7 @@ def ingreso_manual_datos(clave):
                     <div class="form-group" id="group-lugar">
                         <label>📍 Lugar / Corral</label>
                         <input type="text" name="lugar" id="lugar" placeholder="Ej: Corral 1, Potrero Norte, Bodega...">
-                        {f'<div class="sugerencias-container">{" ".join(f"<span class=\\"sugerencia-tag\\" onclick=\\"copiarSugerencia(this)\\">{lugar}</span>" for lugar in lugares_frecuentes)}</div>' if lugares_frecuentes else ''}
+                        {sugerencias_container}
                     </div>
                     
                     <!-- OBSERVACIÓN -->
