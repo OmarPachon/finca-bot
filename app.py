@@ -194,14 +194,14 @@ def activar_finca_con_empleados():
     except Exception as e:
         return f"❌ Error al activar: {e}", 500
 
-# === RUTA: DASHBOARD POR FINCA (CON TODOS LOS FILTROS - CORREGIDO) ===
+# === RUTA: DASHBOARD POR FINCA (CORREGIDO - TABLAS INDEPENDIENTES) ===
 @app.route("/finca/<clave>")
 def dashboard_finca(clave):
     try:
         database_url = os.environ.get("DATABASE_URL")
         if not database_url:
             return "❌ DATABASE_URL no configurada", 500
-
+        
         hoy = datetime.date.today()
         
         # === OBTENER TODOS LOS FILTROS ===
@@ -210,7 +210,7 @@ def dashboard_finca(clave):
         especie_filter = request.args.get("especie", "")
         corral_filter = request.args.get("corral", "")
         tipo_actividad_filter = request.args.get("tipo_actividad", "")
-
+        
         # === PROCESAR FILTRO DE FECHAS ===
         if fecha_inicio_str and fecha_fin_str:
             try:
@@ -234,39 +234,40 @@ def dashboard_finca(clave):
             periodo_txt = " (mes actual)"
             fecha_inicio = hoy.replace(day=1)
             fecha_fin = hoy
-
+        
         filtro_fecha_params = (fecha_inicio.isoformat(), fecha_fin.isoformat())
-
+        
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT nombre, id FROM fincas WHERE clave_secreta = %s", (clave,))
                 finca_row = cur.fetchone()
                 if not finca_row:
                     return "❌ Acceso denegado. URL inválida.", 403
+                
                 nombre_finca, finca_id = finca_row
-
+                
                 # === OBTENER VALORES ÚNICOS PARA LOS FILTROS (DROPDOWNS) ===
                 cur.execute("""
-                    SELECT DISTINCT especie FROM animales 
+                    SELECT DISTINCT especie FROM animales
                     WHERE finca_id = %s AND estado = 'activo'
                     ORDER BY especie
                 """, (finca_id,))
                 especies_disponibles = [row[0] for row in cur.fetchall()]
-
+                
                 cur.execute("""
-                    SELECT DISTINCT corral FROM animales 
+                    SELECT DISTINCT corral FROM animales
                     WHERE finca_id = %s AND estado = 'activo' AND corral IS NOT NULL
                     ORDER BY corral
                 """, (finca_id,))
                 corrales_disponibles = [row[0] for row in cur.fetchall()]
-
+                
                 cur.execute("""
-                    SELECT DISTINCT tipo_actividad FROM registros 
+                    SELECT DISTINCT tipo_actividad FROM registros
                     WHERE finca_id = %s
                     ORDER BY tipo_actividad
                 """, (finca_id,))
                 tipos_actividad_disponibles = [row[0] for row in cur.fetchall()]
-
+                
                 # === INVENTARIO DE ANIMALES (CON FILTROS) ===
                 inventario_query = """
                     SELECT especie, marca_o_arete, categoria, peso, corral
@@ -274,24 +275,20 @@ def dashboard_finca(clave):
                     WHERE finca_id = %s AND estado = 'activo'
                 """
                 inventario_params = [finca_id]
-                
                 if especie_filter:
                     inventario_query += " AND especie = %s"
                     inventario_params.append(especie_filter)
-                
                 if corral_filter:
                     inventario_query += " AND corral = %s"
                     inventario_params.append(corral_filter)
-                
                 inventario_query += " ORDER BY especie, marca_o_arete"
-                
                 cur.execute(inventario_query, tuple(inventario_params))
                 inventario = cur.fetchall()
-
+                
                 # === CONTAR ANIMALES POR ESPECIE ===
                 cur.execute("""
-                    SELECT especie, COUNT(*) 
-                    FROM animales 
+                    SELECT especie, COUNT(*)
+                    FROM animales
                     WHERE finca_id = %s AND estado = 'activo'
                     GROUP BY especie
                 """, (finca_id,))
@@ -299,42 +296,38 @@ def dashboard_finca(clave):
                 bovinos = sum(c for esp, c in animales_por_especie if esp == 'bovino')
                 porcinos = sum(c for esp, c in animales_por_especie if esp == 'porcino')
                 otros = sum(c for esp, c in animales_por_especie if esp not in ['bovino', 'porcino'])
-
+                
                 # === ESTADO DE SANIDAD POR ANIMAL (CON FILTROS) ===
                 sanidad_query = """
-                SELECT 
-                    a.marca_o_arete,
-                    a.especie,
-                    a.peso,
-                    a.corral,
-                    a.estado,
-                    (SELECT sa.fecha || ' | ' || sa.tratamiento FROM salud_animal sa 
-                     WHERE sa.id_externo = a.id_externo AND sa.tipo = 'vacuna' 
-                     ORDER BY sa.fecha DESC LIMIT 1) AS ultima_vacuna,
-                    (SELECT sa.fecha || ' | ' || sa.tratamiento FROM salud_animal sa 
-                     WHERE sa.id_externo = a.id_externo AND sa.tipo = 'desparasitación' 
-                     ORDER BY sa.fecha DESC LIMIT 1) AS ultima_desparasitacion,
-                    (SELECT sa.fecha || ' | ' || sa.tratamiento FROM salud_animal sa 
-                     WHERE sa.id_externo = a.id_externo AND sa.tipo = 'reproducción' 
-                     ORDER BY sa.fecha DESC LIMIT 1) AS ultima_reproduccion
-                FROM animales a
-                WHERE a.finca_id = %s AND a.estado = 'activo'
+                    SELECT
+                        a.marca_o_arete,
+                        a.especie,
+                        a.peso,
+                        a.corral,
+                        a.estado,
+                        (SELECT sa.fecha || ' | ' || sa.tratamiento FROM salud_animal sa
+                         WHERE sa.id_externo = a.id_externo AND sa.tipo = 'vacuna'
+                         ORDER BY sa.fecha DESC LIMIT 1) AS ultima_vacuna,
+                        (SELECT sa.fecha || ' | ' || sa.tratamiento FROM salud_animal sa
+                         WHERE sa.id_externo = a.id_externo AND sa.tipo = 'desparasitación'
+                         ORDER BY sa.fecha DESC LIMIT 1) AS ultima_desparasitacion,
+                        (SELECT sa.fecha || ' | ' || sa.tratamiento FROM salud_animal sa
+                         WHERE sa.id_externo = a.id_externo AND sa.tipo = 'reproducción'
+                         ORDER BY sa.fecha DESC LIMIT 1) AS ultima_reproduccion
+                    FROM animales a
+                    WHERE a.finca_id = %s AND a.estado = 'activo'
                 """
                 sanidad_params = [finca_id]
-                
                 if especie_filter:
                     sanidad_query += " AND a.especie = %s"
                     sanidad_params.append(especie_filter)
-                
                 if corral_filter:
                     sanidad_query += " AND a.corral = %s"
                     sanidad_params.append(corral_filter)
-                
                 sanidad_query += " ORDER BY a.especie, a.marca_o_arete"
-                
                 cur.execute(sanidad_query, tuple(sanidad_params))
                 sanidad_animales = cur.fetchall()
-
+                
                 # === MOVIMIENTOS (CON FILTROS) ===
                 movimientos_query = """
                     SELECT fecha, tipo_actividad, detalle, lugar, cantidad, valor, observacion
@@ -342,19 +335,16 @@ def dashboard_finca(clave):
                     WHERE finca_id = %s AND fecha BETWEEN %s AND %s
                 """
                 movimientos_params = [finca_id, fecha_inicio.isoformat(), fecha_fin.isoformat()]
-                
                 if tipo_actividad_filter:
                     movimientos_query += " AND tipo_actividad = %s"
                     movimientos_params.append(tipo_actividad_filter)
-                
                 movimientos_query += " ORDER BY fecha DESC, id DESC LIMIT 500"
-                
                 cur.execute(movimientos_query, tuple(movimientos_params))
                 registros = cur.fetchall()
-
-                # === FINANZAS (CORREGIDO - salida_animal cuenta como ingreso) ===
+                
+                # === FINANZAS ===
                 finanzas_query = """
-                    SELECT 
+                    SELECT
                         SUM(CASE WHEN tipo_actividad IN ('produccion', 'salida_animal') THEN valor ELSE 0 END),
                         SUM(CASE WHEN tipo_actividad = 'gasto' THEN valor ELSE 0 END) +
                         SUM(CASE WHEN jornales > 0 THEN valor ELSE 0 END)
@@ -362,646 +352,652 @@ def dashboard_finca(clave):
                     WHERE finca_id = %s AND fecha BETWEEN %s AND %s
                 """
                 finanzas_params = [finca_id, fecha_inicio.isoformat(), fecha_fin.isoformat()]
-                
                 if tipo_actividad_filter:
                     finanzas_query += " AND tipo_actividad = %s"
                     finanzas_params.append(tipo_actividad_filter)
-                
                 cur.execute(finanzas_query, tuple(finanzas_params))
                 finanzas = cur.fetchone()
                 ingresos = finanzas[0] or 0
                 gastos = finanzas[1] or 0
                 balance = ingresos - gastos
                 
-                # === KPIs ADICIONALES (FASE 2) ===
-                # 1. Total animales activos
+                # === KPIs ADICIONALES ===
                 cur.execute("""
-                SELECT COUNT(*) FROM animales
-                WHERE finca_id = %s AND estado = 'activo'
+                    SELECT COUNT(*) FROM animales
+                    WHERE finca_id = %s AND estado = 'activo'
                 """, (finca_id,))
                 total_animales = cur.fetchone()[0]
-
-                # 2. Días restantes de suscripción
+                
                 cur.execute("""
-                SELECT vencimiento_suscripcion FROM fincas
-                WHERE id = %s
+                    SELECT vencimiento_suscripcion FROM fincas
+                    WHERE id = %s
                 """, (finca_id,))
                 vencimiento = cur.fetchone()[0]
                 dias_suscripcion = (vencimiento - hoy).days if vencimiento else 0
-
-                # 3. Movimientos en el periodo
+                
                 cur.execute("""
-                SELECT COUNT(*) FROM registros
-                WHERE finca_id = %s AND fecha BETWEEN %s AND %s
+                    SELECT COUNT(*) FROM registros
+                    WHERE finca_id = %s AND fecha BETWEEN %s AND %s
                 """, (finca_id, fecha_inicio.isoformat(), fecha_fin.isoformat()))
                 total_movimientos = cur.fetchone()[0]
-
-        # === CONTAR FILTROS ACTIVOS ===
-        filtros_activos_count = sum(1 for f in [especie_filter, corral_filter, tipo_actividad_filter] if f)
-
-        # === TEXTO Y COLOR PARA EL BALANCE (CORREGIDO - calcular DESPUÉS de finanzas) ===
-        balance_txt = "Positivo" if balance >= 0 else "Negativo"
-        balance_color = "#28a745" if balance >= 0 else "#dc3545"
-
-        # === FUNCIÓN PARA CALCULAR ESTADO DE SANIDAD ===
-        def calcular_estado_sanidad(fecha_ultima, dias_vencimiento=30):
-            if not fecha_ultima:
-                return "—"
-            try:
-                ultima = datetime.datetime.strptime(fecha_ultima, "%Y-%m-%d").date()
-                dias_desde = (hoy - ultima).days
-                if dias_desde <= dias_vencimiento:
-                    return "✅"
-                elif dias_desde <= dias_vencimiento * 2:
-                    return "⚠️"
-                else:
-                    return "❌"
-            except:
-                return "—"
-
-        # === GENERAR HTML ===
-        html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="utf-8">
-            <link rel="preconnect" href="https://fonts.googleapis.com">
-            <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>{nombre_finca} - Finca Digital</title>
-            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-            <style>
-            * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-            body {{
-                font-family: 'Segoe UI', Arial, sans-serif;
-                max-width: 1400px;
-                margin: 0 auto;
-                padding: 20px;
-                background: #f5f7fa;
-            }}
-            h1 {{ color: #198754; text-align: center; margin-bottom: 10px; }}
-            h2 {{ color: #2c3e50; font-size: 1.3em; margin: 30px 0 15px 0; font-weight: 600; }}
-            h3 {{ color: #2c3e50; font-size: 1em; margin: 0 0 10px 0; }}
-
-            /* TARJETAS DE RESUMEN */
-            .resumen {{
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-                gap: 15px;
-                margin: 20px 0;
-            }}
-            .tarjeta {{
-                background: white;
-                padding: 20px;
-                border-radius: 10px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-                border-left: 4px solid;
-            }}
-            .tarjeta.ingresos {{ border-left-color: #28a745; }}
-            .tarjeta.gastos {{ border-left-color: #dc3545; }}
-            .tarjeta.balance {{ border-left-color: #0d6efd; }}
-            .tarjeta.animales {{ border-left-color: #6f42c1; }}
-            .tarjeta.suscripcion {{ border-left-color: #fd7e14; }}
-            .tarjeta.movimientos {{ border-left-color: #20c997; }}
-            .tarjeta h3 {{ color: #6c757d; font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }}
-            .tarjeta .valor {{
-                font-size: 1.5em;
-                font-weight: bold;
-                color: #2c3e50;
-                margin: 8px 0;
-            }}
-            .tarjeta.ingresos .valor {{ color: #28a745; }}
-            .tarjeta.gastos .valor {{ color: #dc3545; }}
-            .tarjeta.balance .valor {{ color: #0d6efd; }}
-            .tarjeta small {{ color: #6c757d; font-size: 0.85em; }}
-
-            /* FILTROS */
-            .filtro-fechas {{
-                background: white;
-                padding: 20px;
-                border-radius: 10px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-                margin: 20px 0;
-            }}
-            .filtro-fechas h3 {{
-                margin-top: 0;
-                color: #2c3e50;
-                font-size: 1.1em;
-                margin-bottom: 15px;
-            }}
-            .filtro-form {{
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-                gap: 15px;
-                align-items: end;
-            }}
-            .filtro-form label {{
-                display: block;
-                font-size: 0.85em;
-                margin-bottom: 5px;
-                color: #6c757d;
-                font-weight: 600;
-            }}
-            .filtro-form input[type="date"],
-            .filtro-form select {{
-                padding: 10px;
-                border: 2px solid #e9ecef;
-                border-radius: 6px;
-                font-size: 0.9em;
-                width: 100%;
-            }}
-            .filtro-form input[type="date"]:focus,
-            .filtro-form select:focus {{
-                outline: none;
-                border-color: #198754;
-            }}
-            .filtro-form button {{
-                background: linear-gradient(135deg, #198754 0%, #146c43 100%);
-                color: white;
-                padding: 10px 20px;
-                border: none;
-                border-radius: 6px;
-                cursor: pointer;
-                font-size: 0.9em;
-                font-weight: 600;
-                transition: transform 0.2s;
-            }}
-            .filtro-form button:hover {{
-                transform: translateY(-2px);
-                box-shadow: 0 4px 12px rgba(25, 135, 84, 0.3);
-            }}
-            .btn-limpiar {{
-                padding: 10px 20px;
-                color: #6c757d;
-                text-decoration: none;
-                border: 2px solid #e9ecef;
-                border-radius: 6px;
-                text-align: center;
-                display: block;
-                font-weight: 600;
-                transition: all 0.2s;
-            }}
-            .btn-limpiar:hover {{
-                background: #f8f9fa;
-                color: #198754;
-                border-color: #198754;
-            }}
-
-            /* GRÁFICOS */
-            .graficos-container {{
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-                gap: 20px;
-                margin: 25px 0;
-            }}
-            .grafico-card {{
-                background: white;
-                padding: 25px;
-                border-radius: 10px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            }}
-            .grafico-card h3 {{
-                color: #2c3e50;
-                font-size: 1.1em;
-                margin-bottom: 20px;
-                text-align: center;
-            }}
-
-            /* ===== TABLAS - INDEPENDIENTES UNA DEBAJO DE OTRA ===== */
-            .tabla-container {{
-                background: white;
-                border-radius: 10px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-                margin: 25px 0;
-                overflow: hidden;
-                width: 100%;
-            }}
-
-            table {{
-                width: 100%;
-                border-collapse: collapse;
-                margin: 0;
-                background: white;
-            }}
-            th, td {{
-                border: none;
-                border-bottom: 1px solid #e9ecef;
-                padding: 12px 15px;
-                text-align: left;
-                font-size: 0.9em;
-            }}
-            th {{
-                background: linear-gradient(135deg, #198754 0%, #146c43 100%);
-                color: white;
-                font-weight: 600;
-                font-size: 0.85em;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-            }}
-            tr:nth-child(even) {{ background-color: #f8f9fa; }}
-            tr:nth-child(odd) {{ background-color: white; }}
-            tr:hover {{ background-color: #e9f7ef; }}
-            tr:last-child td {{ border-bottom: none; }}
-
-            /* SANIDAD - SCROLL HORIZONTAL SOLO SI ES NECESARIO */
-            .tabla-sanidad {{
-                overflow-x: auto;
-                -webkit-overflow-scrolling: touch;
-                width: 100%;
-            }}
-            .tabla-sanidad table {{
-                min-width: 1000px;
-            }}
-            .tabla-sanidad th, 
-            .tabla-sanidad td {{
-                white-space: nowrap;
-                padding: 12px 15px;
-            }}
-
-            /* BOTONES */
-            .btn-export {{
-                display: inline-flex;
-                align-items: center;
-                gap: 10px;
-                background: linear-gradient(135deg, #198754 0%, #146c43 100%);
-                color: white;
-                padding: 15px 30px;
-                text-decoration: none;
-                border-radius: 8px;
-                font-weight: 600;
-                box-shadow: 0 3px 10px rgba(25, 135, 84, 0.3);
-                margin: 20px 0;
-                transition: transform 0.2s;
-            }}
-            .btn-export:hover {{
-                transform: translateY(-2px);
-                box-shadow: 0 5px 15px rgba(25, 135, 84, 0.4);
-            }}
-
-            /* LEYENDA Y FILTROS */
-            .leyenda-sanidad {{
-                background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-                padding: 15px 20px;
-                border-radius: 8px;
-                margin-top: 15px;
-                font-size: 0.85em;
-                color: #495057;
-                border-left: 4px solid #198754;
-            }}
-            .filtros-activos {{
-                background: linear-gradient(135deg, #e9f7ef 0%, #d4edda 100%);
-                border: 2px solid #28a745;
-                padding: 10px 15px;
-                border-radius: 8px;
-                margin: 15px 0;
-                font-size: 0.85em;
-                color: #155724;
-                font-weight: 600;
-            }}
-            .filtros-activos strong {{
-                color: #198754;
-            }}
-
-            /* FOOTER */
-            .footer {{
-                margin-top: 40px;
-                padding: 20px;
-                text-align: center;
-                font-size: 0.85em;
-                color: #6c757d;
-                border-top: 2px solid #e9ecef;
-                background: white;
-                border-radius: 10px;
-            }}
-
-            /* RESPONSIVE */
-            @media (max-width: 768px) {{
-                body {{ padding: 10px; }}
-                h1 {{ font-size: 1.5em; }}
-                h2 {{ font-size: 1.1em; }}
-                .tarjeta .valor {{ font-size: 1.2em; }}
-                .resumen {{ grid-template-columns: repeat(2, 1fr); gap: 10px; }}
-                .graficos-container {{ grid-template-columns: 1fr; }}
-                .filtro-form {{ grid-template-columns: 1fr; }}
-                th, td {{ padding: 10px; font-size: 0.85em; }}
-                .tabla-sanidad table {{ font-size: 0.8em; min-width: 900px; }}
-            }}
-            </style>
-
-        </head>
-        <body>
-            <h1>📊 Dashboard - {nombre_finca}</h1>
-            
-            <div style="text-align: center;">
-                <a href="/finca/{clave}/exportar-excel" class="btn-export">📥 EXPORTAR A EXCEL</a>
-            </div>
-            
-            <!-- FILTROS COMBINADOS -->
-            <div class="filtro-fechas">
-                <h3 style="margin-top: 0; color: #2c3e50;">🔍 Filtros del Dashboard{periodo_txt}</h3>
-                <form method="GET" class="filtro-form">
-                    <div>
-                        <label>📅 Desde:</label>
-                        <input type="date" name="fecha_inicio" value="{fecha_inicio}" min="{hoy.replace(month=1, day=1)}" max="{hoy}">
-                    </div>
-                    <div>
-                        <label>📅 Hasta:</label>
-                        <input type="date" name="fecha_fin" value="{fecha_fin}" min="{hoy.replace(month=1, day=1)}" max="{hoy}">
-                    </div>
-                    <div>
-                        <label>🐮 Especie:</label>
-                        <select name="especie">
-                            <option value="">Todas</option>
-                            <option value="bovino" {"selected" if especie_filter == "bovino" else ""}>Bovinos</option>
-                            <option value="porcino" {"selected" if especie_filter == "porcino" else ""}>Porcinos</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label>🏠 Corral:</label>
-                        <select name="corral">
-                            <option value="">Todos</option>
-                            {"".join(f'<option value="{c}" {"selected" if corral_filter == c else ""}>{c}</option>' for c in corrales_disponibles)}
-                        </select>
-                    </div>
-                    <div>
-                        <label>📝 Actividad:</label>
-                        <select name="tipo_actividad">
-                            <option value="">Todas</option>
-                            {"".join(f'<option value="{t}" {"selected" if tipo_actividad_filter == t else ""}>{t.replace("_", " ").title()}</option>' for t in tipos_actividad_disponibles)}
-                        </select>
-                    </div>
-                    <div>
-                        <button type="submit">🔍 Filtrar</button>
-                    </div>
-                    <div>
-                        <a href="/finca/{clave}" class="btn-limpiar">🔄 Limpiar</a>
-                    </div>
-                </form>
                 
+                # === CONTAR FILTROS ACTIVOS ===
+                filtros_activos_count = sum(1 for f in [especie_filter, corral_filter, tipo_actividad_filter] if f)
+                
+                # === TEXTO Y COLOR PARA EL BALANCE ===
+                balance_txt = "Positivo" if balance >= 0 else "Negativo"
+                balance_color = "#28a745" if balance >= 0 else "#dc3545"
+                
+                # === FUNCIÓN PARA CALCULAR ESTADO DE SANIDAD ===
+                def calcular_estado_sanidad(fecha_ultima, dias_vencimiento=30):
+                    if not fecha_ultima:
+                        return "—"
+                    try:
+                        ultima = datetime.datetime.strptime(fecha_ultima, "%Y-%m-%d").date()
+                        dias_desde = (hoy - ultima).days
+                        if dias_desde <= dias_vencimiento:
+                            return "✅"
+                        elif dias_desde <= dias_vencimiento * 2:
+                            return "⚠️"
+                        else:
+                            return "❌"
+                    except:
+                        return "—"
+                
+                # === GENERAR HTML ===
+                html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{nombre_finca} - Finca Digital</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        body {{
+            font-family: 'Segoe UI', Arial, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f7fa;
+        }}
+        h1 {{ color: #198754; text-align: center; margin-bottom: 10px; }}
+        h2 {{ color: #2c3e50; font-size: 1.4em; margin: 30px 0 20px 0; font-weight: 600; border-bottom: 3px solid #198754; padding-bottom: 10px; }}
+        h3 {{ color: #2c3e50; font-size: 1em; margin: 0 0 10px 0; }}
+        
+        /* BOTÓN EXPORTAR */
+        .btn-export {{
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: linear-gradient(135deg, #198754 0%, #146c43 100%);
+            color: white;
+            padding: 15px 30px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            box-shadow: 0 3px 10px rgba(25, 135, 84, 0.3);
+            margin: 20px auto;
+            transition: transform 0.2s;
+            text-align: center;
+        }}
+        .btn-export:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(25, 135, 84, 0.4);
+        }}
+        
+        /* FILTROS */
+        .filtro-fechas {{
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            margin: 20px 0;
+        }}
+        .filtro-fechas h3 {{
+            margin-top: 0;
+            color: #2c3e50;
+            font-size: 1.2em;
+            margin-bottom: 20px;
+        }}
+        .filtro-form {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            align-items: end;
+        }}
+        .filtro-form label {{
+            display: block;
+            font-size: 0.85em;
+            margin-bottom: 5px;
+            color: #6c757d;
+            font-weight: 600;
+        }}
+        .filtro-form input[type="date"],
+        .filtro-form select {{
+            padding: 10px;
+            border: 2px solid #e9ecef;
+            border-radius: 6px;
+            font-size: 0.9em;
+            width: 100%;
+        }}
+        .filtro-form input[type="date"]:focus,
+        .filtro-form select:focus {{
+            outline: none;
+            border-color: #198754;
+        }}
+        .filtro-form button {{
+            background: linear-gradient(135deg, #198754 0%, #146c43 100%);
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: 600;
+            transition: transform 0.2s;
+        }}
+        .filtro-form button:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(25, 135, 84, 0.3);
+        }}
+        .btn-limpiar {{
+            padding: 10px 20px;
+            color: #6c757d;
+            text-decoration: none;
+            border: 2px solid #e9ecef;
+            border-radius: 6px;
+            text-align: center;
+            display: block;
+            font-weight: 600;
+            transition: all 0.2s;
+        }}
+        .btn-limpiar:hover {{
+            background: #f8f9fa;
+            color: #198754;
+            border-color: #198754;
+        }}
+        
+        /* TARJETAS DE RESUMEN */
+        .resumen {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 25px 0;
+        }}
+        .tarjeta {{
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            border-left: 5px solid;
+        }}
+        .tarjeta.ingresos {{ border-left-color: #28a745; }}
+        .tarjeta.gastos {{ border-left-color: #dc3545; }}
+        .tarjeta.balance {{ border-left-color: #0d6efd; }}
+        .tarjeta.animales {{ border-left-color: #6f42c1; }}
+        .tarjeta.suscripcion {{ border-left-color: #fd7e14; }}
+        .tarjeta.movimientos {{ border-left-color: #20c997; }}
+        .tarjeta h3 {{ color: #6c757d; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; }}
+        .tarjeta .valor {{
+            font-size: 2em;
+            font-weight: bold;
+            color: #2c3e50;
+            margin: 10px 0;
+        }}
+        .tarjeta.ingresos .valor {{ color: #28a745; }}
+        .tarjeta.gastos .valor {{ color: #dc3545; }}
+        .tarjeta.balance .valor {{ color: #0d6efd; }}
+        .tarjeta small {{ color: #6c757d; font-size: 0.9em; }}
+        
+        /* GRÁFICOS */
+        .graficos-container {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 25px;
+            margin: 30px 0;
+        }}
+        .grafico-card {{
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }}
+        .grafico-card h3 {{
+            color: #2c3e50;
+            font-size: 1.2em;
+            margin-bottom: 20px;
+            text-align: center;
+        }}
+        
+        /* ===== TABLAS - INDEPENDIENTES UNA DEBAJO DE OTRA ===== */
+        .tabla-section {{
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            margin: 30px 0;
+            overflow: hidden;
+            width: 100%;
+        }}
+        .tabla-wrapper {{
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            width: 100%;
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin: 0;
+            background: white;
+            min-width: 800px;
+        }}
+        th, td {{
+            border: none;
+            border-bottom: 1px solid #e9ecef;
+            padding: 14px 18px;
+            text-align: left;
+            font-size: 0.9em;
+        }}
+        th {{
+            background: linear-gradient(135deg, #198754 0%, #146c43 100%);
+            color: white;
+            font-weight: 600;
+            font-size: 0.85em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            position: sticky;
+            top: 0;
+        }}
+        tr:nth-child(even) {{ background-color: #f8f9fa; }}
+        tr:nth-child(odd) {{ background-color: white; }}
+        tr:hover {{ background-color: #e9f7ef; }}
+        tr:last-child td {{ border-bottom: none; }}
+        
+        /* LEYENDA Y FILTROS */
+        .leyenda-sanidad {{
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-size: 0.85em;
+            color: #495057;
+            border-left: 4px solid #198754;
+        }}
+        .filtros-activos {{
+            background: linear-gradient(135deg, #e9f7ef 0%, #d4edda 100%);
+            border: 2px solid #28a745;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-size: 0.85em;
+            color: #155724;
+            font-weight: 600;
+        }}
+        
+        /* FOOTER */
+        .footer {{
+            margin-top: 50px;
+            padding: 25px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #6c757d;
+            border-top: 2px solid #e9ecef;
+            background: white;
+            border-radius: 10px;
+        }}
+        
+        /* RESPONSIVE */
+        @media (max-width: 768px) {{
+            body {{ padding: 10px; }}
+            h1 {{ font-size: 1.6em; }}
+            h2 {{ font-size: 1.2em; }}
+            .tarjeta .valor {{ font-size: 1.5em; }}
+            .resumen {{ grid-template-columns: repeat(2, 1fr); gap: 12px; }}
+            .graficos-container {{ grid-template-columns: 1fr; }}
+            .filtro-form {{ grid-template-columns: 1fr; }}
+            th, td {{ padding: 12px 14px; font-size: 0.85em; }}
+            table {{ min-width: 700px; font-size: 0.8em; }}
+        }}
+    </style>
+</head>
+<body>
+    <h1>📊 Dashboard - {nombre_finca}</h1>
+    
+    <div style="text-align: center;">
+        <a href="/finca/{clave}/exportar-excel" class="btn-export">📥 EXPORTAR A EXCEL</a>
+    </div>
+    
+    <!-- FILTROS COMBINADOS -->
+    <div class="filtro-fechas">
+        <h3 style="margin-top: 0; color: #2c3e50;">🔍 Filtros del Dashboard{periodo_txt}</h3>
+        <form method="GET" class="filtro-form">
+            <div>
+                <label>📅 Desde:</label>
+                <input type="date" name="fecha_inicio" value="{fecha_inicio}" min="{hoy.replace(month=1, day=1)}" max="{hoy}">
+            </div>
+            <div>
+                <label>📅 Hasta:</label>
+                <input type="date" name="fecha_fin" value="{fecha_fin}" min="{hoy.replace(month=1, day=1)}" max="{hoy}">
+            </div>
+            <div>
+                <label>🐮 Especie:</label>
+                <select name="especie">
+                    <option value="">Todas</option>
+                    <option value="bovino" {"selected" if especie_filter == "bovino" else ""}>Bovinos</option>
+                    <option value="porcino" {"selected" if especie_filter == "porcino" else ""}>Porcinos</option>
+                </select>
+            </div>
+            <div>
+                <label>🏠 Corral:</label>
+                <select name="corral">
+                    <option value="">Todos</option>
+                    {"".join(f'<option value="{c}" {"selected" if corral_filter == c else ""}>{c}</option>' for c in corrales_disponibles)}
+                </select>
+            </div>
+            <div>
+                <label>📝 Actividad:</label>
+                <select name="tipo_actividad">
+                    <option value="">Todas</option>
+                    {"".join(f'<option value="{t}" {"selected" if tipo_actividad_filter == t else ""}>{t.replace("_", " ").title()}</option>' for t in tipos_actividad_disponibles)}
+                </select>
+            </div>
+            <div>
+                <button type="submit">🔍 Filtrar</button>
+            </div>
+            <div>
+                <a href="/finca/{clave}" class="btn-limpiar">🔄 Limpiar</a>
+            </div>
+        </form>
 """
-        if filtros_activos_count > 0:
-            html += f'<div class="filtros-activos">📌 Filtros activos: <strong>{filtros_activos_count} filtros aplicados</strong></div>'
-        
-        html += f"""
-            </div>
-            
-            <!-- TARJETAS FINANCIERAS -->
-            <div class="resumen">
-                <div class="tarjeta ingresos">
-                    <h3>💰 Ingresos</h3>
-                    <div class="valor">${ingresos:,.0f}</div>
-                    <small style="color: #6c757d;">Periodo seleccionado</small>
-                </div>
-                <div class="tarjeta gastos">
-                    <h3>🔴 Gastos</h3>
-                    <div class="valor">${gastos:,.0f}</div>
-                    <small style="color: #6c757d;">Periodo seleccionado</small>
-                </div>
-                <div class="tarjeta balance">
-                    <h3>📈 Balance</h3>
-                    <div class="valor" style="color: {balance_color};">${balance:,.0f}</div>
-                    <small style="color: #6c757d;">{balance_txt}</small>
-                </div>
-            <!-- TARJETAS KPIs ADICIONALES (FASE 2) -->
-            <div class="resumen">
-                <div class="tarjeta animales">
-                    <h3>🐮 Total Animales</h3>
-                    <div class="valor">{total_animales}</div>
-                    <small style="color: #6c757d;">Activos en inventario</small>
-                </div>
-                <div class="tarjeta suscripcion">
-                    <h3>📅 Días Suscripción</h3>
-                    <div class="valor">{dias_suscripcion}</div>
-                    <small style="color: #6c757d;">Días restantes</small>
-                </div>
-                <div class="tarjeta movimientos">
-                <h3>📝 Movimientos</h3>
-                <div class="valor">{total_movimientos}</div>
-                <small style="color: #6c757d;">En el periodo</small>
-            </div>
-            </div>
-            <!-- GRÁFICOS -->
-            <div class="graficos-container">
-                <div class="grafico-card">
-                    <h3>📊 Ingresos vs Gastos</h3>
-                    <canvas id="graficoFinanciero"></canvas>
-                </div>
-                <div class="grafico-card">
-                    <h3>🐮🐷 Distribución de Animales</h3>
-                    <canvas id="graficoAnimales"></canvas>
-                </div>
-            </div>
-
-            <!-- TABLA DE SANIDAD ANIMAL -->
-            <h2>💉 Estado de Sanidad Animal</h2>
-            <div class="tabla-container tabla-sanidad">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Animal</th>
-                            <th>Especie</th>
-                            <th>Peso</th>
-                            <th>Corral</th>
-                            <th>🧬 Última Vacuna</th>
-                            <th>🪱 Última Desparasitación</th>
-                            <th>🤰 Último Evento Reproductivo</th>
-                            <th>Estado</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-        """
-        
-        for marca, especie, peso, corral, estado, vac, desp, rep in sanidad_animales:
-            especie_txt = "🐮 Bovino" if especie == "bovino" else "🐷 Porcino" if especie == "porcino" else "🦘 Otro"
-            peso_str = f"{peso:.1f} kg" if peso else "—"
-            corral_str = corral or "—"
-            
-            vac_fecha = vac.split(' | ')[0] if vac and ' | ' in vac else vac
-            desp_fecha = desp.split(' | ')[0] if desp and ' | ' in desp else desp
-            rep_fecha = rep.split(' | ')[0] if rep and ' | ' in rep else rep
-            
-            vac_icon = calcular_estado_sanidad(vac_fecha)
-            desp_icon = calcular_estado_sanidad(desp_fecha)
-            rep_icon = calcular_estado_sanidad(rep_fecha, dias_vencimiento=45)
-            
-            estado_general = "🟢" if estado == "activo" else "🔴"
-            
-            vac_txt = vac if vac else "—"
-            desp_txt = desp if desp else "—"
-            rep_txt = rep if rep else "—"
-            
-            html += f"""
-                        <tr>
-                            <td><strong>{marca}</strong></td>
-                            <td>{especie_txt}</td>
-                            <td>{peso_str}</td>
-                            <td>{corral_str}</td>
-                            <td>{vac_icon} <small style="color: #6c757d;">{vac_txt}</small></td>
-                            <td>{desp_icon} <small style="color: #6c757d;">{desp_txt}</small></td>
-                            <td>{rep_icon} <small style="color: #6c757d;">{rep_txt}</small></td>
-                            <td>{estado_general}</td>
-                        </tr>
-            """
-        
-        if not sanidad_animales:
-            html += """
-                        <tr>
-                            <td colspan="8" style="text-align: center; color: #6c757d;">
-                                No hay animales registrados con estos filtros
-                            </td>
-                        </tr>
-            """
-
-        html += """
-                    </tbody>
-                </table>
-            </div>
-            <div class="leyenda-sanidad">
-                <strong>Leyenda:</strong> 
-                ✅ Al día (&lt;30 días) • 
-                ⚠️ Próximo (30-60 días) • 
-                ❌ Vencido (&gt;60 días) • 
-                — Sin registro
-            </div>
-
-            <!-- INVENTARIO -->
-            <h2>📋 Inventario de Animales Activos</h2>
-            <div class="tabla-container">
+                if filtros_activos_count > 0:
+                    html += f'<div class="filtros-activos">📌 Filtros activos: <strong>{filtros_activos_count} filtros aplicados</strong></div>'
+                
+                html += f"""
+    </div>
+    
+    <!-- TARJETAS FINANCIERAS -->
+    <div class="resumen">
+        <div class="tarjeta ingresos">
+            <h3>💰 Ingresos</h3>
+            <div class="valor">${ingresos:,.0f}</div>
+            <small style="color: #6c757d;">Periodo seleccionado</small>
+        </div>
+        <div class="tarjeta gastos">
+            <h3>🔴 Gastos</h3>
+            <div class="valor">${gastos:,.0f}</div>
+            <small style="color: #6c757d;">Periodo seleccionado</small>
+        </div>
+        <div class="tarjeta balance">
+            <h3>📈 Balance</h3>
+            <div class="valor" style="color: {balance_color};">${balance:,.0f}</div>
+            <small style="color: #6c757d;">{balance_txt}</small>
+        </div>
+    </div>
+    
+    <!-- TARJETAS KPIs ADICIONALES -->
+    <div class="resumen">
+        <div class="tarjeta animales">
+            <h3>🐮 Total Animales</h3>
+            <div class="valor">{total_animales}</div>
+            <small style="color: #6c757d;">Activos en inventario</small>
+        </div>
+        <div class="tarjeta suscripcion">
+            <h3>📅 Días Suscripción</h3>
+            <div class="valor">{dias_suscripcion}</div>
+            <small style="color: #6c757d;">Días restantes</small>
+        </div>
+        <div class="tarjeta movimientos">
+            <h3>📝 Movimientos</h3>
+            <div class="valor">{total_movimientos}</div>
+            <small style="color: #6c757d;">En el periodo</small>
+        </div>
+    </div>
+    
+    <!-- GRÁFICOS -->
+    <div class="graficos-container">
+        <div class="grafico-card">
+            <h3>📊 Ingresos vs Gastos</h3>
+            <canvas id="graficoFinanciero"></canvas>
+        </div>
+        <div class="grafico-card">
+            <h3>🐮🐷 Distribución de Animales</h3>
+            <canvas id="graficoAnimales"></canvas>
+        </div>
+    </div>
+    
+    <!-- TABLA DE SANIDAD ANIMAL - FULL WIDTH -->
+    <h2>💉 Estado de Sanidad Animal</h2>
+    <div class="tabla-section">
+        <div class="tabla-wrapper">
             <table>
-            
-                <thead><tr><th>Especie</th><th>Marca</th><th>Categoría</th><th>Peso (kg)</th><th>Corral</th></tr></thead>
+                <thead>
+                    <tr>
+                        <th>Animal</th>
+                        <th>Especie</th>
+                        <th>Peso</th>
+                        <th>Corral</th>
+                        <th>🧬 Última Vacuna</th>
+                        <th>🪱 Última Desparasitación</th>
+                        <th>🤰 Último Evento Reproductivo</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
                 <tbody>
-        """
-        
-        if inventario:
-            for esp, marca, cat, peso, corral in inventario:
-                especie_txt = "Bovino" if esp == "bovino" else "Porcino" if esp == "porcino" else esp.title()
-                peso_str = f"{peso:.1f}" if peso else "—"
-                cat_str = cat or "—"
-                corral_str = corral or "—"
-                html += f"<tr><td>{especie_txt}</td><td>{marca}</td><td>{cat_str}</td><td>{peso_str}</td><td>{corral_str}</td></tr>"
-        else:
-            html += "<tr><td colspan='5'>No hay animales registrados con estos filtros</td></tr>"
-
-        html += """
+"""
+                for marca, especie, peso, corral, estado, vac, desp, rep in sanidad_animales:
+                    especie_txt = "🐮 Bovino" if especie == "bovino" else "🐷 Porcino" if especie == "porcino" else "🦘 Otro"
+                    peso_str = f"{peso:.1f} kg" if peso else "—"
+                    corral_str = corral or "—"
+                    
+                    vac_fecha = vac.split(' | ')[0] if vac and ' | ' in vac else vac
+                    desp_fecha = desp.split(' | ')[0] if desp and ' | ' in desp else desp
+                    rep_fecha = rep.split(' | ')[0] if rep and ' | ' in rep else rep
+                    
+                    vac_icon = calcular_estado_sanidad(vac_fecha)
+                    desp_icon = calcular_estado_sanidad(desp_fecha)
+                    rep_icon = calcular_estado_sanidad(rep_fecha, dias_vencimiento=45)
+                    
+                    estado_general = "🟢" if estado == "activo" else "🔴"
+                    
+                    vac_txt = vac if vac else "—"
+                    desp_txt = desp if desp else "—"
+                    rep_txt = rep if rep else "—"
+                    
+                    html += f"""
+                    <tr>
+                        <td><strong>{marca}</strong></td>
+                        <td>{especie_txt}</td>
+                        <td>{peso_str}</td>
+                        <td>{corral_str}</td>
+                        <td>{vac_icon} <small style="color: #6c757d;">{vac_txt}</small></td>
+                        <td>{desp_icon} <small style="color: #6c757d;">{desp_txt}</small></td>
+                        <td>{rep_icon} <small style="color: #6c757d;">{rep_txt}</small></td>
+                        <td>{estado_general}</td>
+                    </tr>
+"""
+                if not sanidad_animales:
+                    html += """
+                    <tr>
+                        <td colspan="8" style="text-align: center; color: #6c757d; padding: 30px;">
+                            No hay animales registrados con estos filtros
+                        </td>
+                    </tr>
+"""
+                html += """
                 </tbody>
             </table>
-            </div>
-
-            <!-- MOVIMIENTOS -->
-            <h2>📝 Últimos Movimientos</h2>
-            <div class="tabla-container">
+        </div>
+    </div>
+    <div class="leyenda-sanidad">
+        <strong>Leyenda:</strong>
+        ✅ Al día (&lt;30 días) •
+        ⚠️ Próximo (30-60 días) •
+        ❌ Vencido (&gt;60 días) •
+        — Sin registro
+    </div>
+    
+    <!-- INVENTARIO - FULL WIDTH -->
+    <h2>📋 Inventario de Animales Activos</h2>
+    <div class="tabla-section">
+        <div class="tabla-wrapper">
             <table>
-            
-                <thead><tr><th>Fecha</th><th>Tipo</th><th>Detalle</th><th>Lugar</th><th>Cant.</th><th>Valor</th><th>Obs.</th></tr></thead>
+                <thead>
+                    <tr>
+                        <th>Especie</th>
+                        <th>Marca</th>
+                        <th>Categoría</th>
+                        <th>Peso (kg)</th>
+                        <th>Corral</th>
+                    </tr>
+                </thead>
                 <tbody>
-        """
-        for reg in registros:
-            valor_str = f"${reg[5]:,.0f}" if reg[5] and reg[5] > 0 else "—"
-            html += f"<tr><td>{reg[0]}</td><td>{reg[1]}</td><td>{reg[2]}</td><td>{reg[3]}</td><td>{reg[4] or ''}</td><td>{valor_str}</td><td>{reg[6] or ''}</td></tr>"
-
-        html += f"""
+"""
+                if inventario:
+                    for esp, marca, cat, peso, corral in inventario:
+                        especie_txt = "Bovino" if esp == "bovino" else "Porcino" if esp == "porcino" else esp.title()
+                        peso_str = f"{peso:.1f}" if peso else "—"
+                        cat_str = cat or "—"
+                        corral_str = corral or "—"
+                        html += f"<tr><td>{especie_txt}</td><td>{marca}</td><td>{cat_str}</td><td>{peso_str}</td><td>{corral_str}</td></tr>"
+                else:
+                    html += "<tr><td colspan='5' style='text-align: center; color: #6c757d; padding: 30px;'>No hay animales registrados con estos filtros</td></tr>"
+                
+                html += """
                 </tbody>
             </table>
-            </div>
-
-            <!-- SCRIPT GRÁFICOS -->
-            <script>
-            const datosFinancieros = {{
-                ingresos: {ingresos},
-                gastos: {gastos},
-                balance: {balance}
-            }};
-            const datosAnimales = {{
-                bovinos: {bovinos},
-                porcinos: {porcinos},
-                otros: {otros}
-            }};
-
-            const ctxFin = document.getElementById('graficoFinanciero').getContext('2d');
-            new Chart(ctxFin, {{
-                type: 'bar',
-                data: {{
-                    labels: ['Ingresos', 'Gastos', 'Balance'],
-                    datasets: [{{
-                        label: 'COP',
-                        data: [datosFinancieros.ingresos, datosFinancieros.gastos, datosFinancieros.balance],
-                        backgroundColor: [
-                            'rgba(40, 167, 69, 0.85)',
-                            'rgba(220, 53, 69, 0.85)',
-                            datosFinancieros.balance >= 0 ? 'rgba(0, 123, 255, 0.85)' : 'rgba(255, 193, 7, 0.85)'
-                        ],
-                        borderColor: [
-                            'rgba(40, 167, 69, 1)',
-                            'rgba(220, 53, 69, 1)',
-                            datosFinancieros.balance >= 0 ? 'rgba(0, 123, 255, 1)' : 'rgba(255, 193, 7, 1)'
-                        ],
-                        borderWidth: 2,
-                        borderRadius: 8
-                    }}]
-                }},
-                options: {{
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    plugins: {{
-                        legend: {{ display: false }},
-                        tooltip: {{
-                            backgroundColor: 'rgba(0,0,0,0.85)',
-                            callbacks: {{
-                                label: function(ctx) {{
-                                    return '$ ' + ctx.parsed.y.toLocaleString('es-CO') + ' COP';
-                                }}
+        </div>
+    </div>
+    
+    <!-- MOVIMIENTOS - FULL WIDTH -->
+    <h2>📝 Últimos Movimientos</h2>
+    <div class="tabla-section">
+        <div class="tabla-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Tipo</th>
+                        <th>Detalle</th>
+                        <th>Lugar</th>
+                        <th>Cant.</th>
+                        <th>Valor</th>
+                        <th>Obs.</th>
+                    </tr>
+                </thead>
+                <tbody>
+"""
+                for reg in registros:
+                    valor_str = f"${reg[5]:,.0f}" if reg[5] and reg[5] > 0 else "—"
+                    html += f"<tr><td>{reg[0]}</td><td>{reg[1]}</td><td>{reg[2]}</td><td>{reg[3]}</td><td>{reg[4] or ''}</td><td>{valor_str}</td><td>{reg[6] or ''}</td></tr>"
+                
+                if not registros:
+                    html += "<tr><td colspan='7' style='text-align: center; color: #6c757d; padding: 30px;'>No hay movimientos en este periodo</td></tr>"
+                
+                html += f"""
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <!-- SCRIPT GRÁFICOS -->
+    <script>
+        const datosFinancieros = {{
+            ingresos: {ingresos},
+            gastos: {gastos},
+            balance: {balance}
+        }};
+        const datosAnimales = {{
+            bovinos: {bovinos},
+            porcinos: {porcinos},
+            otros: {otros}
+        }};
+        
+        const ctxFin = document.getElementById('graficoFinanciero').getContext('2d');
+        new Chart(ctxFin, {{
+            type: 'bar',
+            data: {{
+                labels: ['Ingresos', 'Gastos', 'Balance'],
+                datasets: [{{
+                    label: 'COP',
+                    data: [datosFinancieros.ingresos, datosFinancieros.gastos, datosFinancieros.balance],
+                    backgroundColor: [
+                        'rgba(40, 167, 69, 0.85)',
+                        'rgba(220, 53, 69, 0.85)',
+                        datosFinancieros.balance >= 0 ? 'rgba(0, 123, 255, 0.85)' : 'rgba(255, 193, 7, 0.85)'
+                    ],
+                    borderColor: [
+                        'rgba(40, 167, 69, 1)',
+                        'rgba(220, 53, 69, 1)',
+                        datosFinancieros.balance >= 0 ? 'rgba(0, 123, 255, 1)' : 'rgba(255, 193, 7, 1)'
+                    ],
+                    borderWidth: 2,
+                    borderRadius: 8
+                }}]
+            }},
+            options: {{
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {{
+                    legend: {{ display: false }},
+                    tooltip: {{
+                        backgroundColor: 'rgba(0,0,0,0.85)',
+                        callbacks: {{
+                            label: function(ctx) {{
+                                return '$ ' + ctx.parsed.y.toLocaleString('es-CO') + ' COP';
                             }}
                         }}
-                    }},
-                    scales: {{
-                        y: {{ beginAtZero: true, grid: {{ color: 'rgba(0,0,0,0.05)' }} }},
-                        x: {{ grid: {{ display: false }} }}
                     }}
-                }}
-            }});
-
-            const ctxAnim = document.getElementById('graficoAnimales').getContext('2d');
-            new Chart(ctxAnim, {{
-                type: 'doughnut',
-                data: {{
-                    labels: ['Bovinos', 'Porcinos', 'Otros'],
-                    datasets: [{{
-                        data: [datosAnimales.bovinos, datosAnimales.porcinos, datosAnimales.otros],
-                        backgroundColor: [
-                            'rgba(25, 135, 84, 0.9)',
-                            'rgba(13, 110, 253, 0.9)',
-                            'rgba(255, 193, 7, 0.9)'
-                        ],
-                        borderColor: '#fff',
-                        borderWidth: 3,
-                        hoverOffset: 15
-                    }}]
                 }},
-                options: {{
-                    responsive: true,
-                    cutout: '65%',
-                    plugins: {{
-                        legend: {{ position: 'bottom', labels: {{ padding: 15, usePointStyle: true }} }}
-                    }}
+                scales: {{
+                    y: {{ beginAtZero: true, grid: {{ color: 'rgba(0,0,0,0.05)' }} }},
+                    x: {{ grid: {{ display: false }} }}
                 }}
-            }});
-            </script>
-
-            <div class="footer">
-                🔒 Datos confidenciales. No compartas esta URL.<br>
-                💡 Finca Digital © {datetime.date.today().year}
-            </div>
-        </body>
-        </html>
-        """
-        return html
-
+            }}
+        }});
+        
+        const ctxAnim = document.getElementById('graficoAnimales').getContext('2d');
+        new Chart(ctxAnim, {{
+            type: 'doughnut',
+            data: {{
+                labels: ['Bovinos', 'Porcinos', 'Otros'],
+                datasets: [{{
+                    data: [datosAnimales.bovinos, datosAnimales.porcinos, datosAnimales.otros],
+                    backgroundColor: [
+                        'rgba(25, 135, 84, 0.9)',
+                        'rgba(13, 110, 253, 0.9)',
+                        'rgba(255, 193, 7, 0.9)'
+                    ],
+                    borderColor: '#fff',
+                    borderWidth: 3,
+                    hoverOffset: 15
+                }}]
+            }},
+            options: {{
+                responsive: true,
+                cutout: '65%',
+                plugins: {{
+                    legend: {{ position: 'bottom', labels: {{ padding: 15, usePointStyle: true }} }}
+                }}
+            }}
+        }});
+    </script>
+    
+    <div class="footer">
+        🔒 Datos confidenciales. No compartas esta URL.<br>
+        💡 Finca Digital © {datetime.date.today().year}
+    </div>
+</body>
+</html>
+"""
+                return html
     except Exception as e:
         print(f"❌ Error dashboard: {e}")
         print(traceback.format_exc())
         return f"❌ Error al cargar el dashboard: {e}", 500
-
+   
 # === RUTA: CONSULTAR MI FINCA_ID ===
 @app.route("/mi-finca-id")
 def mi_finca_id():
