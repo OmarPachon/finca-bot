@@ -1899,17 +1899,19 @@ def guardar_manual_datos(clave):
                         except Exception as e:
                             print(f"❌ Error al guardar sanidad para {marca}: {e}")
 
-            # === PÁGINA DE ÉXITO ===
+            # === PÁGINA DE ÉXITO MEJORADA ===
             html = f"""
             <!DOCTYPE html>
             <html lang="es">
             <head>
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
-                <title>✅ Registro Exitoso</title>
+                <title>✅ Registro Exitoso - {nombre_finca}</title>
+                <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
                 <style>
+                    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
                     body {{
-                        font-family: Arial, sans-serif;
+                        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
                         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                         min-height: 100vh;
                         display: flex;
@@ -1920,64 +1922,274 @@ def guardar_manual_datos(clave):
                     .success-card {{
                         background: white;
                         border-radius: 20px;
-                        padding: 50px;
-                        text-align: center;
-                        max-width: 500px;
+                        padding: 40px;
+                        max-width: 600px;
+                        width: 100%;
+                        box-shadow: 0 20px 60px rgba(0,0,0,0.3);
                     }}
                     .success-icon {{
                         font-size: 4em;
                         color: #28a745;
-                        margin-bottom: 20px;
+                        margin-bottom: 15px;
+                        animation: bounce 0.6s ease;
                     }}
-                    h1 {{ color: #28a745; }}
-                    .info {{
-                        background: #f8f9fa;
+                    @keyframes bounce {{
+                        0%, 100% {{ transform: translateY(0); }}
+                        50% {{ transform: translateY(-10px); }}
+                    }}
+                    h1 {{ 
+                        color: #28a745; 
+                        font-size: 1.8em; 
+                        margin-bottom: 10px; 
+                        font-weight: 700;
+                    }}
+                    .finca-nombre {{
+                        color: #6c757d;
+                        font-size: 1em;
+                        margin-bottom: 25px;
+                    }}
+                    .info-box {{
+                        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
                         border-radius: 12px;
-                        padding: 20px;
+                        padding: 25px;
                         margin: 25px 0;
-                        text-align: left;
                     }}
                     .info-row {{
                         display: flex;
                         justify-content: space-between;
-                        padding: 10px 0;
-                        border-bottom: 1px solid #e9ecef;
+                        padding: 12px 0;
+                        border-bottom: 1px solid #dee2e6;
+                    }}
+                    .info-row:last-child {{
+                        border-bottom: none;
+                    }}
+                    .info-row .label {{
+                        color: #6c757d;
+                        font-weight: 500;
+                    }}
+                    .info-row .value {{
+                        color: #2c3e50;
+                        font-weight: 600;
+                        text-align: right;
+                    }}
+                    .info-row .value.destacado {{
+                        color: #198754;
+                        font-size: 1.1em;
+                    }}
+                    .acciones {{
+                        display: grid;
+                        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+                        gap: 12px;
+                        margin: 25px 0;
                     }}
                     .btn {{
-                        padding: 14px 28px;
+                        padding: 14px 20px;
                         border-radius: 10px;
                         text-decoration: none;
-                        margin: 10px;
-                        display: inline-block;
+                        text-align: center;
+                        font-weight: 600;
+                        font-size: 0.9em;
+                        transition: all 0.2s;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        gap: 8px;
                     }}
-                    .btn-primary {{ background: #198754; color: white; }}
-                    .btn-secondary {{ background: white; color: #198754; border: 2px solid #198754; }}
+                    .btn-primary {{ 
+                        background: linear-gradient(135deg, #198754 0%, #146c43 100%); 
+                        color: white; 
+                        box-shadow: 0 3px 10px rgba(25, 135, 84, 0.3);
+                    }}
+                    .btn-primary:hover {{
+                        transform: translateY(-2px);
+                        box-shadow: 0 5px 15px rgba(25, 135, 84, 0.4);
+                    }}
+                    .btn-secondary {{ 
+                        background: white; 
+                        color: #198754; 
+                        border: 2px solid #198754; 
+                    }}
+                    .btn-secondary:hover {{
+                        background: #198754;
+                        color: white;
+                    }}
+                    .btn-whatsapp {{
+                        background: #25D366;
+                        color: white;
+                    }}
+                    .btn-whatsapp:hover {{
+                        background: #1ebc57;
+                    }}
+                    .btn-print {{
+                        background: #6c757d;
+                        color: white;
+                    }}
+                    .btn-print:hover {{
+                        background: #5a6268;
+                    }}
+                    .historial {{
+                        background: white;
+                        border: 2px solid #e9ecef;
+                        border-radius: 12px;
+                        padding: 20px;
+                        margin: 25px 0;
+                    }}
+                    .historial h3 {{
+                        color: #2c3e50;
+                        font-size: 1em;
+                        margin-bottom: 15px;
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                    }}
+                    .historial-item {{
+                        padding: 10px 0;
+                        border-bottom: 1px solid #f8f9fa;
+                        font-size: 0.9em;
+                    }}
+                    .historial-item:last-child {{
+                        border-bottom: none;
+                    }}
+                    .historial-item .tipo {{
+                        color: #198754;
+                        font-weight: 600;
+                    }}
+                    .historial-item .detalle {{
+                        color: #6c757d;
+                        font-size: 0.85em;
+                    }}
+                    .alerta {{
+                        background: linear-gradient(135deg, #fff3cd 0%, #ffe69c 100%);
+                        border-left: 4px solid #ffc107;
+                        padding: 15px;
+                        border-radius: 8px;
+                        margin: 20px 0;
+                        font-size: 0.9em;
+                        color: #856404;
+                    }}
+                    .alerta strong {{
+                        display: block;
+                        margin-bottom: 5px;
+                    }}
+                    @media (max-width: 768px) {{
+                        .success-card {{ padding: 30px 20px; }}
+                        .acciones {{ grid-template-columns: 1fr; }}
+                        h1 {{ font-size: 1.5em; }}
+                    }}
                 </style>
             </head>
             <body>
                 <div class="success-card">
-                    <div class="success-icon">✓</div>
+                    <div class="success-icon">✅</div>
                     <h1>¡Registro Exitoso!</h1>
-                    <p>Los datos han sido guardados en <strong>{nombre_finca}</strong></p>
-                    <div class="info">
+                    <p class="finca-nombre">Guardado en <strong>{nombre_finca}</strong></p>
+                    
+                    <div class="info-box">
                         <div class="info-row">
-                            <span>📋 Tipo</span>
-                            <span>{tipo.replace('_', ' ').title()}</span>
+                            <span class="label">📋 Tipo</span>
+                            <span class="value">{tipo.replace('_', ' ').title()}</span>
                         </div>
                         <div class="info-row">
-                            <span>📦 Detalle</span>
-                            <span>{detalle}</span>
+                            <span class="label">📦 Detalle</span>
+                            <span class="value">{detalle}</span>
                         </div>
                         <div class="info-row">
-                            <span>💰 Valor</span>
-                            <span>${valor:,.0f} COP</span>
+                            <span class="label">💰 Valor</span>
+                            <span class="value destacado">${valor:,.0f} COP</span>
                         </div>
-                        {f'<div class="info-row"><span>🐮 Animales</span><span>{animales_registrados} registrados</span></div>' if animales_registrados > 0 else ''}
-                        {f'<div class="info-row"><span>💸 Vendidos</span><span>{animales_vendidos} actualizados</span></div>' if animales_vendidos > 0 else ''}
+                        <div class="info-row">
+                            <span class="label">📍 Lugar</span>
+                            <span class="value">{lugar if lugar else '—'}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label"> Cantidad</span>
+                            <span class="value">{cantidad if cantidad else '—'}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">👷 Jornales</span>
+                            <span class="value">{jornales if jornales else '0'}</span>
+                        </div>
+                        {f'<div class="info-row"><span class="label">🐮 Animales</span><span class="value destacado">{animales_registrados} registrados</span></div>' if animales_registrados > 0 else ''}
+                        {f'<div class="info-row"><span class="label">💸 Vendidos</span><span class="value destacado">{animales_vendidos} actualizados</span></div>' if animales_vendidos > 0 else ''}
+                        <div class="info-row">
+                            <span class="label">📅 Fecha</span>
+                            <span class="value">{datetime.date.today().strftime('%d/%m/%Y')}</span>
+                        </div>
                     </div>
-                    <div>
-                        <a href="/finca/{clave}/ingreso-manual" class="btn btn-secondary">📝 Registrar Otro</a>
-                        <a href="/finca/{clave}" class="btn btn-primary">📊 Dashboard</a>
+                    
+                    <!-- ALERTA INTELIGENTE -->
+                    {f'''
+                    <div class="alerta">
+                        <strong>💡 Recordatorio:</strong>
+                        Si registraste una vacuna, programa la próxima en 30 días.
+                    </div>
+                    ''' if tipo == 'sanidad_animal' else ''}
+                    
+                    <!-- BOTONES DE ACCIÓN -->
+                    <div class="acciones">
+                        <a href="/finca/{clave}/ingreso-manual" class="btn btn-secondary">
+                            📝 Otro Registro
+                        </a>
+                        <a href="/finca/{clave}" class="btn btn-primary">
+                            📊 Dashboard
+                        </a>
+                        <a href="https://wa.me/?text=✅ Registro guardado en {nombre_finca}%0A📋 {tipo.replace('_', ' ').title()}%0A💰 ${valor:,.0f} COP" 
+                        class="btn btn-whatsapp" target="_blank">
+                            📤 WhatsApp
+                        </a>
+                        <a href="javascript:window.print()" class="btn btn-print">
+                            🖨️ Imprimir
+                        </a>
+                    </div>
+                    
+                    <!-- HISTORIAL RECIENTE -->
+                    <div class="historial">
+                        <h3>📜 Últimos 3 Registros</h3>
+            """
+
+            # === OBTENER ÚLTIMOS 3 REGISTROS PARA EL HISTORIAL ===
+            try:
+                with psycopg2.connect(database_url) as conn_hist:
+                    with conn_hist.cursor() as cur_hist:
+                        cur_hist.execute("""
+                            SELECT tipo_actividad, detalle, valor, fecha
+                            FROM registros
+                            WHERE finca_id = %s
+                            ORDER BY fecha DESC, id DESC
+                            LIMIT 3
+                        """, (finca_id,))
+                        ultimos_registros = cur_hist.fetchall()
+                        
+                        if ultimos_registros:
+                            for reg_tipo, reg_detalle, reg_valor, reg_fecha in ultimos_registros:
+                                fecha_fmt = reg_fecha.strftime('%d/%m') if reg_fecha else '—'
+                                html += f"""
+                        <div class="historial-item">
+                            <div class="tipo">{reg_tipo.replace('_', ' ').title()}</div>
+                            <div class="detalle">{reg_detalle} • ${reg_valor:,.0f} • {fecha_fmt}</div>
+                        </div>
+            """
+                        else:
+                            html += """
+                        <div class="historial-item" style="color: #6c757d; text-align: center;">
+                            No hay registros anteriores
+                        </div>
+            """
+            except Exception as e:
+                print(f"⚠️ No se pudo cargar historial: {e}")
+                html += """
+                        <div class="historial-item" style="color: #6c757d; text-align: center;">
+                            No se pudo cargar el historial
+                        </div>
+            """
+
+            html += """
+                    </div>
+                    
+                    <div style="text-align: center; margin-top: 25px;">
+                        <a href="/finca/{clave}" style="color: #6c757d; text-decoration: none; font-size: 0.9em;">
+                            ← Volver al Dashboard
+                        </a>
                     </div>
                 </div>
             </body>
