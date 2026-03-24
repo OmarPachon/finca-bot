@@ -1589,8 +1589,8 @@ def ingreso_manual_datos(clave):
                         </div>
                         <div class="form-group" id="group-valor">
                             <label>💰 Valor Total (COP)</label>
-                            <input type="number" name="valor" id="valor" value="0" min="0" placeholder="Ej: 500000">
-                            <small>Deja en 0 si no aplica</small>
+                            <input type="text" name="valor" id="valor" value="0" pattern="[0-9]*" oninput="this.value = this.value.replace(/[^0-9]/g, '')" placeholder="Ej: 500000">
+                            <small>Solo números. Ej: 1500000 para 1.5 millones</small>
                         </div>
                     </div>
                     
