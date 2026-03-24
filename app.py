@@ -448,6 +448,26 @@ def dashboard_finca(clave):
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(25, 135, 84, 0.4);
         }}
+        /* BOTÓN INGRESO MANUAL */
+        .btn-manual {{
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
+            color: white;
+            padding: 15px 30px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            box-shadow: 0 3px 10px rgba(13, 110, 253, 0.3);
+            margin: 20px 10px;
+            transition: transform 0.2s;
+            text-align: center;
+        }}
+        .btn-manual:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(13, 110, 253, 0.4);
+        }}
         
         /* FILTROS */
         .filtro-fechas {{
@@ -667,6 +687,7 @@ def dashboard_finca(clave):
     <h1>📊 Dashboard - {nombre_finca}</h1>
     
     <div style="text-align: center;">
+        <a href="/finca/{clave}/ingreso-manual" class="btn-manual">📝 INGRESO MOVIMIENTOS FINCA</a>
         <a href="/finca/{clave}/exportar-excel" class="btn-export">📥 EXPORTAR A EXCEL</a>
     </div>
     
