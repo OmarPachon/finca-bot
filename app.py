@@ -1705,6 +1705,12 @@ def ingreso_manual_datos(clave):
                 this.value = parseInt(val).toLocaleString('es-CO');
             }}
         }});
+        // Antes de enviar el form, poner el valor sin formato
+        document.getElementById('registroForm')?.addEventListener('submit', function(e) {{
+            const valorInput = document.getElementById('valor');
+            const valorLimpio = valorInput.getAttribute('data-valor-limpio') || '0';
+            valorInput.value = valorLimpio;
+            }});
     </script>
 </body>
 </html>
