@@ -1771,24 +1771,32 @@ def guardar_manual_datos(clave):
         if not tipo or not detalle:
             return "❌ Tipo y detalle son obligatorios", 400
 
-        if bot and hasattr(bot, 'guardar_registro'):
-            mensaje_completo = f"{detalle} {lugar} {observacion}".strip()
-            
-            bot.guardar_registro(
-                tipo_actividad=tipo,
-                accion=tipo,
-                detalle=detalle,
-                lugar=lugar,
-                cantidad=cantidad,
-                valor=valor,
-                unidad="manual_web",
-                observacion=observacion,
-                jornales=jornales,
-                finca_id=finca_id,
-                usuario_id=usuario_id,
-                mensaje_completo=mensaje_completo,
-                
-            )
+        # === INSERTAR DIRECTO A REGISTROS (para controlar la fecha) ===
+        fecha_hoy = datetime.date.today()
+
+        with psycopg2.connect(database_url) as conn_reg:
+            with conn_reg.cursor() as cur_reg:
+                cur_reg.execute("""
+                    INSERT INTO registros 
+                    (fecha, tipo_actividad, detalle, lugar, cantidad, valor, observacion, jornales, finca_id, usuario_id, unidad)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (
+                    fecha_hoy,
+                    tipo,
+                    detalle,
+                    lugar,
+                    cantidad,
+                    valor,
+                    observacion,
+                    jornales,
+                    finca_id,
+                    usuario_id,
+                    "manual_web"
+                ))
+                conn_reg.commit()
+                registro_id = cur_reg.fetchone()[0]
+                print(f"✅ Registro guardado ID: {registro_id}, fecha: {fecha_hoy}")
 
             # === PROCESAR INGRESO ANIMAL ===
             animales_registrados = 0
