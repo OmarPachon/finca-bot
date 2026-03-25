@@ -1607,7 +1607,14 @@ def ingreso_manual_datos(clave):
                         <textarea name="observacion" id="observacion" placeholder="Ej: marca LG01 peso 450 kg, marca LG02 peso 480 kg..."></textarea>
                         <small>Para animales: usa el formato <code>marca XXX peso YYY kg</code></small>
                     </div>
-                    
+                    <!-- FECHA DEL MOVIMIENTO -->
+                    <div class="form-group" id="group-fecha">
+                        <label>📅 Fecha del Movimiento</label>
+                        <input type="date" name="fecha" id="fecha" value="{datetime.date.today().isoformat()}" max="{datetime.date.today()}">
+                        <small>Fecha cuando se realizó la actividad</small>
+                    </div>
+
+
                     <!-- JORNALES -->
                     <div class="form-group" id="group-jornales">
                         <label>👷 Número de Jornales</label>
@@ -1743,6 +1750,7 @@ def guardar_manual_datos(clave):
         lugar = request.form.get("lugar", "").strip()
         observacion = request.form.get("observacion", "").strip()
         jornales = request.form.get("jornales", 0)
+        fecha = request.form.get("fecha") or datetime.date.today().isoformat()
 
         try:
             cantidad = float(cantidad) if cantidad else None
@@ -1784,7 +1792,8 @@ def guardar_manual_datos(clave):
                 jornales=jornales,
                 finca_id=finca_id,
                 usuario_id=usuario_id,
-                mensaje_completo=mensaje_completo
+                mensaje_completo=mensaje_completo,
+                fecha=fecha
             )
 
             # === PROCESAR INGRESO ANIMAL ===
