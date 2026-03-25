@@ -1,4 +1,4 @@
-# -* coding: utf-8 -*-
+# -* coding: utf-8 -*--
 """
 app.py - Webhook para WhatsApp + Twilio + Gestión completa de fincas y empleados
 Versión: Dashboard con filtros, gráficos 2D, exportación a Excel y procesamiento completo
