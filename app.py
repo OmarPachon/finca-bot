@@ -854,9 +854,9 @@ def dashboard_finca(clave):
     </div>
     <div class="leyenda-sanidad">
         <strong>Leyenda:</strong>
-        ✅ Al día (&lt;30 días) •
-        ⚠️ Próximo (30-60 días) •
-        ❌ Vencido (&gt;60 días) •
+        ✅ Al día (&lt;90 días) •
+        ⚠️ Próximo (90-120 días) •
+        ❌ Vencido (&gt;120 días) •
         — Sin registro
     </div>
     
@@ -1870,11 +1870,11 @@ def guardar_manual_datos(clave):
             # === PROCESAR SANIDAD ANIMAL ===
             if tipo == "sanidad_animal" and observacion:
                 detalle_lower = detalle.lower()
-                if any(kw in detalle_lower for kw in ["vacuna", "aftosa", "brucelosis"]):
+                if any(kw in detalle_lower for kw in ["vacuna","Parvovirus","septicemia","Leptospirosis","carbon","carbón","Peste Porcina","peste","rabia","Circovirus","Pasteurella", "aftosa", "brucelosis"]):
                     tipo_sanidad = "vacuna"
-                elif any(kw in detalle_lower for kw in ["desparasit", "garrapata", "gusano"]):
+                elif any(kw in detalle_lower for kw in ["desparasit","purga","nuche", "parasito","parásito","garrapata", "gusano"]):
                     tipo_sanidad = "desparasitación"
-                elif any(kw in detalle_lower for kw in ["monta", "insemin", "preñez", "celo", "reproduccion", "reproducción"]):
+                elif any(kw in detalle_lower for kw in ["monta","inseminacion","inseminación","Parto", "insemin", "preñez", "celo", "reproduccion", "reproducción"]):
                     tipo_sanidad = "reproducción"
                 else:
                     tipo_sanidad = "sanidad"
@@ -2201,11 +2201,7 @@ def guardar_manual_datos(clave):
             html += """
                     </div>
                     
-                    <div style="text-align: center; margin-top: 25px;">
-                        <a href="/finca/{clave}" style="color: #6c757d; text-decoration: none; font-size: 0.9em;">
-                            ← Volver al Dashboard
-                        </a>
-                    </div>
+                    
                 </div>
             </body>
             </html>
