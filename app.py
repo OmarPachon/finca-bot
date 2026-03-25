@@ -1743,7 +1743,8 @@ def guardar_manual_datos(clave):
                 usuario_row = cur.fetchone()
                 usuario_id = usuario_row[0] if usuario_row else None
 
-        # === PROCESAR DATOS DEL FORMULARIO ===
+        
+        # === PROCESAR DATOS DEL FORMULARIO (versión corregida) ===
         tipo = request.form.get("tipo", "")
         detalle = request.form.get("detalle", "").strip()
         cantidad = request.form.get("cantidad")
@@ -1752,28 +1753,33 @@ def guardar_manual_datos(clave):
         observacion = request.form.get("observacion", "").strip()
         jornales = request.form.get("jornales", 0)
 
-        # Conversión segura de valores
+        # Conversión segura de cantidad
         try:
             cantidad = float(cantidad) if cantidad else None
         except (ValueError, TypeError):
             cantidad = None
-            
+
+        # === FIX CRÍTICO: Procesar valor con limpieza de separadores ===
         try:
-            # FIX: Limpiar separadores de miles antes de convertir
             if valor:
-                valor_str = str(valor).replace('.', '').replace(',', '')
-                valor = float(valor_str) if valor_str else 0
+                valor_limpio = str(valor).replace('.', '').replace(',', '')
+                valor = float(valor_limpio) if valor_limpio else 0
             else:
                 valor = 0
         except (ValueError, TypeError):
             valor = 0
-            
+        valor_num = float(valor) if isinstance(valor, (int, float, str)) else 0
+
+        # Conversión segura de jornales
         try:
             jornales = int(float(jornales)) if jornales else 0
         except (ValueError, TypeError):
             jornales = 0
 
-        print(f"🔍 DEBUG: valor={valor} (tipo: {type(valor).__name__})")
+        # Variable segura para el HTML
+        valor_num = float(valor) if isinstance(valor, (int, float)) else 0
+
+        print(f"🔍 DEBUG: valor={valor} (tipo: {type(valor).__name__}), valor_num={valor_num}")
 
         if not tipo or not detalle:
             return "❌ Tipo y detalle son obligatorios", 400
@@ -1954,7 +1960,7 @@ def guardar_manual_datos(clave):
         <div class="info-box">
             <div class="info-row"><span class="label">📋 Tipo</span><span class="value">{tipo.replace('_', ' ').title()}</span></div>
             <div class="info-row"><span class="label">📦 Detalle</span><span class="value">{detalle}</span></div>
-            <div class="info-row"><span class="label">💰 Valor</span><span class="value destacado">${int(valor):,} COP</span></div>
+            <div class="info-row"><span class="label">💰 Valor</span><span class="value destacado">${int(valor_num):,} COP</span></div>
             <div class="info-row"><span class="label">📍 Lugar</span><span class="value">{lugar or '—'}</span></div>
             <div class="info-row"><span class="label">🔢 Cantidad</span><span class="value">{cantidad or '—'}</span></div>
             <div class="info-row"><span class="label">👷 Jornales</span><span class="value">{jornales}</span></div>
@@ -1966,7 +1972,7 @@ def guardar_manual_datos(clave):
         <div class="acciones">
             <a href="/finca/{clave}/ingreso-manual" class="btn btn-secondary">📝 Otro Registro</a>
             <a href="/finca/{clave}" class="btn btn-primary">📊 Dashboard</a>
-            <a href="https://wa.me/?text=✅+Registro+guardado+en+{nombre_finca}%0A📋+{tipo.replace('_',+' ').title()}%0A💰+${int(valor):,}+COP" class="btn btn-whatsapp" target="_blank">📤 WhatsApp</a>
+            <a href="https://wa.me/?text=✅+Registro+guardado+en+{nombre_finca}%0A📋+{tipo.replace('_',+' ').title()}%0A💰+${int(valor_num):,}+COP" class="btn btn-whatsapp" target="_blank">📤 WhatsApp</a>
         </div>
 
         <div class="historial">
