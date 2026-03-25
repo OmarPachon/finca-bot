@@ -13,6 +13,14 @@ import secrets
 from flask import Flask, request, send_file
 from twilio.twiml.messaging_response import MessagingResponse
 
+# === AGREGAR DESPUÉS DE LOS IMPORTS ===
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 print("🚀 Iniciando app.py...")
 
 sys.path.append(os.path.dirname(__file__))
@@ -1716,30 +1724,31 @@ def ingreso_manual_datos(clave):
         return f"❌ Error: {e}", 500
 
 # ============================================================================
-# === RUTA: PROCESAR Y GUARDAR DATOS DEL FORMULARIO MANUAL (CORREGIDO) ===
+# === RUTA: PROCESAR Y GUARDAR DATOS DEL FORMULARIO MANUAL (VERSIÓN MEJORADA) ===
 # ============================================================================
 @app.route("/finca/<clave>/guardar-manual", methods=["POST"])
 def guardar_manual_datos(clave):
     try:
         database_url = os.environ.get("DATABASE_URL")
         if not database_url:
+            logger.error("❌ DATABASE_URL no configurada")
             return "❌ DATABASE_URL no configurada", 500
         
-        # 1. Validar Finca
+        # === 1. VALIDAR FINCA Y USUARIO ===
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT nombre, id FROM fincas WHERE clave_secreta = %s", (clave,))
                 finca_row = cur.fetchone()
                 if not finca_row:
+                    logger.warning(f"⚠️ Acceso denegado para clave: {clave}")
                     return "❌ Acceso denegado.", 403
                 nombre_finca, finca_id = finca_row
                 
-                # 2. Obtener Usuario (Dueño por defecto para web)
                 cur.execute("SELECT id FROM usuarios WHERE finca_id = %s AND rol = 'dueño' LIMIT 1", (finca_id,))
                 usuario_row = cur.fetchone()
                 usuario_id = usuario_row[0] if usuario_row else None
 
-        # 3. Procesar Datos del Formulario
+        # === 2. OBTENER Y PROCESAR DATOS DEL FORMULARIO ===
         tipo = request.form.get("tipo", "")
         detalle = request.form.get("detalle", "").strip()
         cantidad = request.form.get("cantidad")
@@ -1748,7 +1757,14 @@ def guardar_manual_datos(clave):
         observacion = request.form.get("observacion", "").strip()
         jornales = request.form.get("jornales", 0)
 
-        # Limpieza de datos numéricos
+        # === 3. VALIDACIONES DE SEGURIDAD (MEJORA #1) ===
+        if not tipo or not detalle:
+            return "❌ Tipo y detalle son obligatorios", 400
+        
+        if len(detalle) < 3:
+            return "❌ El detalle debe tener al menos 3 caracteres", 400
+        
+        # Procesar valores numéricos
         try:
             cantidad = float(cantidad) if cantidad else None
         except (ValueError, TypeError):
@@ -1756,7 +1772,6 @@ def guardar_manual_datos(clave):
             
         try:
             if valor:
-                # Eliminar puntos y comas de formato miles
                 valor_str = str(valor).replace('.', '').replace(',', '')
                 valor = float(valor_str) if valor_str else 0
             else:
@@ -1768,17 +1783,26 @@ def guardar_manual_datos(clave):
             jornales = int(float(jornales)) if jornales else 0
         except (ValueError, TypeError):
             jornales = 0
+        
+        # Validar que no sean negativos
+        if valor < 0:
+            return "❌ El valor no puede ser negativo", 400
+        if cantidad and cantidad < 0:
+            return "❌ La cantidad no puede ser negativa", 400
+        if jornales < 0:
+            return "❌ Los jornales no pueden ser negativos", 400
 
-        if not tipo or not detalle:
-            return "❌ Tipo y detalle son obligatorios", 400
-
-        fecha_hoy = datetime.date.today().isoformat()
-        fecha_registro = datetime.datetime.now().isoformat()
-        mensaje_completo = f"{detalle} {lugar} {observacion}".strip()
-
-        # 4. GUARDAR REGISTRO PRINCIPAL (DIRECTO EN APP.PY - SIN DEPENDENCIA DEL BOT)
-        with psycopg2.connect(database_url) as conn:
+        # === 4. TRANSACCIÓN ÚNICA PARA TODAS LAS OPERACIONES (MEJORA #2) ===
+        animales_registrados = 0
+        animales_vendidos = 0
+        
+        with psycopg2.connect(database_url) as conn:  # UNA SOLA CONEXIÓN
             with conn.cursor() as cur:
+                # 4.1 Guardar Registro Principal
+                fecha_hoy = datetime.date.today().isoformat()
+                fecha_registro = datetime.datetime.now().isoformat()
+                mensaje_completo = f"{detalle} {lugar} {observacion}".strip()
+                
                 cur.execute('''
                     INSERT INTO registros 
                     (fecha, tipo_actividad, accion, detalle, lugar, cantidad, valor, unidad, observacion, jornales, fecha_registro, finca_id, usuario_id)
@@ -1786,37 +1810,31 @@ def guardar_manual_datos(clave):
                 ''', (
                     fecha_hoy, tipo, tipo, detalle, lugar, cantidad, valor, "manual_web", observacion, jornales, fecha_registro, finca_id, usuario_id
                 ))
-                conn.commit()
-        
-        # 5. LÓGICA ESPECÍFICA (ANIMALES Y SANIDAD) - SE MANTIENE IGUAL
-        animales_registrados = 0
-        animales_vendidos = 0
-
-        # === PROCESAR INGRESO ANIMAL ===
-        if tipo == "ingreso_animal" and observacion:
-            marcas = re.findall(r"marca\s+([a-z0-9-]+)", observacion, re.IGNORECASE)
-            for marca in marcas:
-                marca_upper = marca.upper()
-                peso_valor = None
-                pattern = r"marca\s+" + re.escape(marca) + r".*?peso\s*(\d+(?:\.\d+)?)\s*kg"
-                peso_match = re.search(pattern, observacion, re.IGNORECASE)
-                if peso_match:
-                    peso_valor = float(peso_match.group(1))
+                logger.info(f"✅ Registro principal guardado: {tipo} - {detalle}")
                 
-                especie = "bovino"
-                if any(p in detalle.lower() for p in ["cerdo", "lechón", "cerda", "chancho", "porcino"]):
-                    especie = "porcino"
-                
-                categoria = None
-                if "ternera" in detalle.lower(): categoria = "ternera"
-                elif "ternero" in detalle.lower(): categoria = "ternero"
-                elif "vaca" in detalle.lower(): categoria = "vaca"
-                elif "toro" in detalle.lower(): categoria = "toro"
-                elif "lechón" in detalle.lower(): categoria = "lechón"
-                elif "cerda" in detalle.lower(): categoria = "cerda"
-
-                with psycopg2.connect(database_url) as conn:
-                    with conn.cursor() as cur:
+                # 4.2 Procesar Ingreso de Animales (si aplica)
+                if tipo == "ingreso_animal" and observacion:
+                    marcas = re.findall(r"marca\s+([a-z0-9-]+)", observacion, re.IGNORECASE)
+                    for marca in marcas:
+                        marca_upper = marca.upper()
+                        peso_valor = None
+                        pattern = r"marca\s+" + re.escape(marca) + r".*?peso\s*(\d+(?:\.\d+)?)\s*kg"
+                        peso_match = re.search(pattern, observacion, re.IGNORECASE)
+                        if peso_match:
+                            peso_valor = float(peso_match.group(1))
+                        
+                        especie = "bovino"
+                        if any(p in detalle.lower() for p in ["cerdo", "lechón", "cerda", "chancho", "porcino"]):
+                            especie = "porcino"
+                        
+                        categoria = None
+                        if "ternera" in detalle.lower(): categoria = "ternera"
+                        elif "ternero" in detalle.lower(): categoria = "ternero"
+                        elif "vaca" in detalle.lower(): categoria = "vaca"
+                        elif "toro" in detalle.lower(): categoria = "toro"
+                        elif "lechón" in detalle.lower(): categoria = "lechón"
+                        elif "cerda" in detalle.lower(): categoria = "cerda"
+                        
                         cur.execute("""
                             INSERT INTO animales (especie, id_externo, marca_o_arete, categoria, corral, estado, peso, finca_id)
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
@@ -1832,49 +1850,47 @@ def guardar_manual_datos(clave):
                             peso_valor,
                             finca_id
                         ))
-                        conn.commit()
-                animales_registrados += 1
-
-        # === PROCESAR SALIDA ANIMAL ===
-        if tipo == "salida_animal" and observacion:
-            marcas = re.findall(r"marca\s+([a-z0-9-]+)", observacion, re.IGNORECASE)
-            marcas = [m.upper() for m in marcas]
-            if marcas:
-                for marca in marcas:
-                    try:
-                        with psycopg2.connect(database_url) as conn:
-                            with conn.cursor() as cur:
+                        animales_registrados += 1
+                        logger.info(f"🐮 Animal registrado: {marca_upper}")
+                
+                # 4.3 Procesar Salida/Venta de Animales (si aplica)
+                if tipo == "salida_animal" and observacion:
+                    marcas = re.findall(r"marca\s+([a-z0-9-]+)", observacion, re.IGNORECASE)
+                    marcas = [m.upper() for m in marcas]
+                    for marca in marcas:
+                        try:
+                            cur.execute("""
+                                SELECT id_externo FROM animales
+                                WHERE (marca_o_arete = %s OR id_externo LIKE %s)
+                                AND finca_id = %s AND estado = 'activo'
+                            """, (marca, f"%{marca}%", finca_id))
+                            row = cur.fetchone()
+                            if row:
+                                id_externo = row[0]
                                 cur.execute("""
-                                    SELECT id_externo FROM animales
-                                    WHERE (marca_o_arete = %s OR id_externo LIKE %s)
-                                    AND finca_id = %s AND estado = 'activo'
-                                """, (marca, f"%{marca}%", finca_id))
-                                row = cur.fetchone()
-                                if row:
-                                    id_externo = row[0]
-                                    cur.execute("""
-                                        UPDATE animales SET estado = 'vendido', observaciones = %s WHERE id_externo = %s
-                                    """, (f"Vendido: {detalle} - {observacion}", id_externo))
-                                    conn.commit()
-                                    animales_vendidos += 1
-                    except Exception as e:
-                        print(f"❌ Error venta {marca}: {e}")
-
-        # === PROCESAR SANIDAD ANIMAL ===
-        if tipo == "sanidad_animal" and observacion:
-            detalle_lower = detalle.lower()
-            tipo_sanidad = "sanidad"
-            if any(kw in detalle_lower for kw in ["vacuna","aftosa","brucelosis","carbón","peste"]): tipo_sanidad = "vacuna"
-            elif any(kw in detalle_lower for kw in ["desparasit","garrapata","gusano"]): tipo_sanidad = "desparasitación"
-            elif any(kw in detalle_lower for kw in ["monta","insemin","preñez","celo"]): tipo_sanidad = "reproducción"
-
-            marcas = re.findall(r"marca\s+([a-z0-9-]+)", observacion, re.IGNORECASE)
-            marcas = [m.upper() for m in marcas]
-            
-            for marca in marcas:
-                try:
-                    with psycopg2.connect(database_url) as conn:
-                        with conn.cursor() as cur:
+                                    UPDATE animales SET estado = 'vendido', observaciones = %s WHERE id_externo = %s
+                                """, (f"Vendido: {detalle} - {observacion}", id_externo))
+                                animales_vendidos += 1
+                                logger.info(f"💸 Animal vendido: {marca}")
+                        except Exception as e:
+                            logger.warning(f"⚠️ Error venta {marca}: {e}")
+                
+                # 4.4 Procesar Sanidad Animal (si aplica)
+                if tipo == "sanidad_animal" and observacion:
+                    detalle_lower = detalle.lower()
+                    tipo_sanidad = "sanidad"
+                    if any(kw in detalle_lower for kw in ["vacuna","aftosa","brucelosis","carbón","peste"]):
+                        tipo_sanidad = "vacuna"
+                    elif any(kw in detalle_lower for kw in ["desparasit","garrapata","gusano"]):
+                        tipo_sanidad = "desparasitación"
+                    elif any(kw in detalle_lower for kw in ["monta","insemin","preñez","celo"]):
+                        tipo_sanidad = "reproducción"
+                    
+                    marcas = re.findall(r"marca\s+([a-z0-9-]+)", observacion, re.IGNORECASE)
+                    marcas = [m.upper() for m in marcas]
+                    
+                    for marca in marcas:
+                        try:
                             cur.execute("SELECT id_externo FROM animales WHERE (marca_o_arete = %s OR id_externo LIKE %s) AND finca_id = %s", (marca, f"%{marca}%", finca_id))
                             row = cur.fetchone()
                             if row:
@@ -1883,11 +1899,15 @@ def guardar_manual_datos(clave):
                                     INSERT INTO salud_animal (id_externo, tipo, tratamiento, fecha, observacion, finca_id)
                                     VALUES (%s, %s, %s, %s, %s, %s)
                                 """, (id_externo, tipo_sanidad, detalle, fecha_hoy, observacion, finca_id))
-                                conn.commit()
-                except Exception as e:
-                    print(f"❌ Error sanidad {marca}: {e}")
+                                logger.info(f"💉 Sanidad guardada: {marca} - {tipo_sanidad}")
+                        except Exception as e:
+                            logger.warning(f"⚠️ Error sanidad {marca}: {e}")
+                
+                # 4.5 COMMIT ÚNICO AL FINAL (TODO O NADA)
+                conn.commit()
+                logger.info(f"✅ Transacción completada: {animales_registrados} animales, {animales_vendidos} vendidos")
 
-        # 6. GENERAR PÁGINA DE ÉXITO (SE MANTIENE IGUAL)
+        # === 5. GENERAR PÁGINA DE ÉXITO ===
         html = f"""
         <!DOCTYPE html>
         <html lang="es">
@@ -1923,6 +1943,7 @@ def guardar_manual_datos(clave):
                 <div class="info-row"><span>📍 Lugar</span><span>{lugar if lugar else '—'}</span></div>
                 <div class="info-row"><span>📅 Fecha</span><span>{datetime.date.today().strftime('%d/%m/%Y')}</span></div>
                 {f'<div class="info-row"><span>🐮 Animales</span><span>{animales_registrados} registrados</span></div>' if animales_registrados > 0 else ''}
+                {f'<div class="info-row"><span>💸 Vendidos</span><span>{animales_vendidos} actualizados</span></div>' if animales_vendidos > 0 else ''}
             </div>
             <div class="acciones">
                 <a href="/finca/{clave}/ingreso-manual" class="btn btn-secondary">📝 Otro Registro</a>
@@ -1935,8 +1956,8 @@ def guardar_manual_datos(clave):
         return html
 
     except Exception as e:
-        print(f"❌ Error guardar manual: {e}")
-        print(traceback.format_exc())
+        logger.error(f"❌ Error guardar manual: {e}")
+        logger.error(traceback.format_exc())
         return f"❌ Error: {e}", 500
 
 # === INICIO DEL SERVIDOR ===
