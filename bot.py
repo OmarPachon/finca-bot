@@ -707,6 +707,75 @@ def consultar_estado_animal(arete):
     except Exception as e:
         return "❌ Error al consultar el animal. Inténtalo más tarde."
 
+# ============================================================================
+# === FUNCIÓN: RENOVAR SUSCRIPCIÓN (SEGURA - NO CAMBIA CLAVE_SECRETA) ===
+# ============================================================================
+def renovar_suscripcion(telefono_dueño, dias_extension=30):
+    """
+    Renueva la suscripción de una finca SIN modificar la clave_secreta.
+    
+    Args:
+        telefono_dueño: Formato 'whatsapp:+573143539351'
+        dias_extension: Días a agregar desde HOY (default: 30)
+    
+    Returns:
+        str: Mensaje de confirmación o error
+    """
+    try:
+        database_url = os.environ.get("DATABASE_URL")
+        if not database_url:
+            logger.error("❌ DATABASE_URL no configurada en renovación")
+            return "❌ Error de configuración"
+        
+        with psycopg2.connect(database_url) as conn:
+            with conn.cursor() as cur:
+                # 1. Verificar que la finca existe y obtener datos
+                cur.execute("""
+                    SELECT f.id, f.nombre, f.clave_secreta, f.vencimiento_suscripcion
+                    FROM fincas f
+                    JOIN usuarios u ON f.id = u.finca_id
+                    WHERE u.telefono_whatsapp = %s AND u.rol = 'dueño'
+                """, (telefono_dueño,))
+                
+                row = cur.fetchone()
+                if not row:
+                    logger.warning(f"⚠️ Finca no encontrada para {telefono_dueño}")
+                    return "❌ No se encontró una finca activa para este número."
+                
+                finca_id, nombre_finca, clave_secreta, vencimiento_actual = row
+                
+                # 2. Calcular nueva fecha de vencimiento
+                hoy = datetime.date.today()
+                nueva_fecha = hoy + datetime.timedelta(days=dias_extension)
+                
+                # 3. ACTUALIZAR SOLO vencimiento_suscripcion (clave_secreta INTACTA)
+                cur.execute("""
+                    UPDATE fincas 
+                    SET 
+                        suscripcion_activa = TRUE,
+                        vencimiento_suscripcion = %s
+                    WHERE id = %s
+                """, (nueva_fecha.isoformat(), finca_id))
+                
+                conn.commit()
+                
+                # 4. Registrar en log
+                logger.info(f"✅ Renovación: {nombre_finca} extendida hasta {nueva_fecha}")
+                
+                # 5. Retornar mensaje de éxito
+                url_dashboard = f"https://finca-bot-ukhk.onrender.com/finca/{clave_secreta}"
+                return (
+                    f"✅ ¡Suscripción renovada!\n"
+                    f"🏡 Finca: {nombre_finca}\n"
+                    f"📅 Nueva vigencia: hasta {nueva_fecha.strftime('%d/%m/%Y')}\n"
+                    f"🔗 Tu dashboard sigue en: {url_dashboard}\n"
+                    f"💡 Todos tus datos están seguros."
+                )
+                
+    except Exception as e:
+        logger.error(f"❌ Error en renovación: {e}")
+        return f"❌ Error al renovar: {str(e)[:100]}"
+
 # === 5. FLUJO CONVERSACIONAL COMPLETO ===
 def iniciar_flujo_conversacional_existente(mensaje, user_key, state):
     msg = mensaje.strip().lower()
@@ -1125,6 +1194,15 @@ def procesar_mensaje_whatsapp(mensaje, remitente=None):
             "**Nequi:** 314 353 9351 (Omar Pachón)\n"
             "Envía comprobante para reactivar tu finca."
         )
+    # === DETECTAR SOLICITUD DE RENOVACIÓN ===
+    if any(kw in mensaje.lower() for kw in ["comprobante", "renovar", "pague", "nequi", "ya pagué", "pagué"]):
+        # Verificar si es el dueño solicitando renovación
+        if usuario_info["rol"] == "dueño":
+            resultado = renovar_suscripcion(remitente, dias_extension=30)
+            return resultado
+        else:
+            return "⚠️ Solo el dueño puede renovar la suscripción. Contacta al administrador."
+        
     if "reporte" in mensaje.lower():
         rango = re.search(r"reporte.*?del\s+(\d{1,2})/(\d{1,2})\s+al\s+(\d{1,2})/(\d{1,2})", mensaje.lower())
         if rango:

@@ -1070,6 +1070,17 @@ def reiniciar_bd():
     except Exception as e:
         return f"❌ Error: {e}", 500
 
+# === RUTA: RENOVAR SUSCRIPCIÓN (SOLO ADMIN) ===
+@app.route("/admin/renovar/<telefono>")
+def admin_renovar_suscripcion(telefono):
+    """Renueva suscripción vía URL. Solo para uso del administrador."""
+    # Aquí podrías agregar autenticación básica si lo deseas
+    telefono_formateado = f"whatsapp:+57{telefono}" if not telefono.startswith("whatsapp:") else telefono
+    if bot and hasattr(bot, 'renovar_suscripcion'):
+        resultado = bot.renovar_suscripcion(telefono_formateado, dias_extension=30)
+        return f"<pre>{resultado}</pre>"
+    return "❌ Módulo bot no disponible"
+
 # === RUTA: EXPORTAR A EXCEL (CON PESTAÑA DE SANIDAD ANIMAL) ===
 @app.route("/finca/<clave>/exportar-excel")
 def exportar_finca_excel(clave):
