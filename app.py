@@ -1757,11 +1757,9 @@ def guardar_manual_datos(clave):
         try:
             if valor:
                 valor_str = str(valor).replace('.', '').replace(',', '')
-                valor = float(valor) if valor else 0
                 valor = float(valor_str) if valor_str else 0
             else:
                 valor = 0
-            
         except (ValueError, TypeError):
             valor = 0
         try:
