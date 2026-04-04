@@ -179,7 +179,7 @@ except Exception as e:
     BD_OK = False
 
 # === 2. PALABRAS CLAVE PARA ANIMALES ===
-PORCINO_PALABRAS = ["cerdo", "lechón", "cerda", "verraco", "lechon", "lechones", "cochino"]
+PORCINO_PALABRAS = ["cerdo", "lechón", "cerda", "verraco", "lechon", "lechones","porcino" "cochino"]
 BOVINO_PALABRAS = ["vaca", "toro", "ternero", "ternera", "novillo", "novilla", "buey", "ganado"]
 CATEGORIAS_VALIDAS = ["lechón", "cerda", "verraco", "ceba", "toro", "ternero", "ternera", "novillo", "vaquilla", "engorda", "lechera"]
 
@@ -1124,9 +1124,9 @@ def iniciar_flujo_conversacional_con_finca(mensaje, usuario_info):
                             if row:
                                 id_externo = row[0]
                                 detalle_lower = detalle.lower()
-                                if any(kw in detalle_lower for kw in ["vacuna", "aftosa", "brucelosis"]):
+                                if any(kw in detalle_lower for kw in ["vacuna", "vacunacion", "vacunación", "aftosa", "carbon", "carbón", "brucelosis"]):
                                     tipo_sanidad = "vacuna"
-                                elif any(kw in detalle_lower for kw in ["desparasit", "garrapata", "gusano"]):
+                                elif any(kw in detalle_lower for kw in ["desparasit", "lavado"," lombriz", "purga", " purgante", "nuche", "vitamin" "garrapata", "gusano"]):
                                     tipo_sanidad = "desparasitación"
                                 elif any(kw in detalle_lower for kw in ["monta", "insemin", "preñez", "celo", "reproduccion", "reproducción", "inseminacion", "servicio"]):
                                     tipo_sanidad = "reproducción"

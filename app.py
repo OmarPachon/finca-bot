@@ -1890,11 +1890,11 @@ def guardar_manual_datos(clave):
                 if tipo == "sanidad_animal" and observacion:
                     detalle_lower = detalle.lower()
                     tipo_sanidad = "sanidad"
-                    if any(kw in detalle_lower for kw in ["vacuna","aftosa","brucelosis","carbón","peste"]):
+                    if any(kw in detalle_lower for kw in ["vacuna", "vacunacion", "vacunación", "aftosa", "carbon", "carbón", "brucelosis","peste"]):
                         tipo_sanidad = "vacuna"
-                    elif any(kw in detalle_lower for kw in ["desparasit","garrapata","gusano"]):
+                    elif any(kw in detalle_lower for kw in ["desparasit", "lavado"," lombriz", "purga", " purgante", "nuche", "vitamin" "garrapata", "gusano"]):
                         tipo_sanidad = "desparasitación"
-                    elif any(kw in detalle_lower for kw in ["monta","insemin","preñez","celo"]):
+                    elif any(kw in detalle_lower for kw in ["monta", "insemin", "preñez", "celo", "reproduccion", "reproducción", "inseminacion", "servicio"]):
                         tipo_sanidad = "reproducción"
                     
                     marcas = re.findall(r"marca\s+([a-z0-9-]+)", observacion, re.IGNORECASE)
