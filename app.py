@@ -257,7 +257,13 @@ def dashboard_finca(clave):
                                 # === MODO EDICIÓN? ===
                 edit_id = request.args.get("edit_id")
                 datos_editar = None
-                titulo_form = "📝 Nueva Actividad"
+                {titulo_form}
+                {f'''
+                <div style="background:#fff3cd; border:1px solid #ffc107; padding:10px; border-radius:5px; margin:10px 0;">
+                    <strong>⚠️ Modo Edición:</strong> Estás corrigiendo el registro #{edit_id}.
+                    <br>La edición actualiza datos financieros. Si involucra animales, verifica el inventario manualmente.
+                </div>
+                ''' if edit_id else ''}
                 accion_form = f"/finca/{clave}/guardar-manual"
                 texto_boton = "✅ Guardar Registro"
 
