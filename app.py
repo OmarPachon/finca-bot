@@ -338,7 +338,7 @@ def dashboard_finca(clave):
                 
                 # === MOVIMIENTOS (CON FILTROS) ===
                 movimientos_query = """
-                    SELECT fecha, tipo_actividad, detalle, lugar, cantidad, valor, observacion
+                    SELECT id, fecha, tipo_actividad, detalle, lugar, cantidad, valor, observacion
                     FROM registros
                     WHERE finca_id = %s AND fecha BETWEEN %s AND %s
                 """
