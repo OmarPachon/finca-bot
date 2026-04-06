@@ -254,24 +254,6 @@ def dashboard_finca(clave):
                 
                 nombre_finca, finca_id = finca_row
                 
-                                # === MODO EDICIÓN? ===
-                edit_id = request.args.get("edit_id")
-                datos_editar = None
-                titulo_form = "📝 Nueva Actividad"
-                accion_form = f"/finca/{clave}/guardar-manual"
-                texto_boton = "✅ Guardar Registro"
-
-                if edit_id:
-                    try:
-                        cur.execute("SELECT * FROM registros WHERE id = %s AND finca_id = %s", (edit_id, finca_id))
-                        datos_editar = cur.fetchone()
-                        if datos_editar:
-                            titulo_form = "✏️ Editar Registro"
-                            accion_form = f"/finca/{clave}/actualizar-manual/{edit_id}"
-                            texto_boton = "🔄 Actualizar Registro"
-                    except Exception as e:
-                        logger.error(f"Error cargando edición: {e}")
-                
                 # === OBTENER VALORES ÚNICOS PARA LOS FILTROS (DROPDOWNS) ===
                 cur.execute("""
                     SELECT DISTINCT especie FROM animales
@@ -356,7 +338,7 @@ def dashboard_finca(clave):
                 
                 # === MOVIMIENTOS (CON FILTROS) ===
                 movimientos_query = """
-                    SELECT id, fecha, tipo_actividad, detalle, lugar, cantidad, valor, observacion
+                    SELECT fecha, tipo_actividad, detalle, lugar, cantidad, valor, observacion
                     FROM registros
                     WHERE finca_id = %s AND fecha BETWEEN %s AND %s
                 """
@@ -937,13 +919,11 @@ def dashboard_finca(clave):
                 <tbody>
 """
                 for reg in registros:
-                    # AHORA: reg[0]=id, reg[1]=fecha, reg[2]=tipo, reg[3]=detalle, reg[4]=lugar, reg[5]=cantidad, reg[6]=valor, reg[7]=observacion
-                    id_registro = reg[0]
-                    valor_str = f"${reg[6]:,.0f}" if reg[6] and reg[6] > 0 else "—"
-                    html += f"<tr><td>{reg[1]}</td><td>{reg[2]}</td><td>{reg[3]}</td><td>{reg[4] or ''}</td><td>{reg[5] or ''}</td><td>{valor_str}</td><td>{reg[7] or ''}</td><td><a href='/finca/{clave}/ingreso-manual?edit_id={id_registro}' style='color:#007bff; text-decoration:none;'>✏️ Editar</a></td></tr>"
+                    valor_str = f"${reg[5]:,.0f}" if reg[5] and reg[5] > 0 else "—"
+                    html += f"<tr><td>{reg[0]}</td><td>{reg[1]}</td><td>{reg[2]}</td><td>{reg[3]}</td><td>{reg[4] or ''}</td><td>{valor_str}</td><td>{reg[6] or ''}</td></tr>"
                 
                 if not registros:
-                    html += "<tr><td colspan='8' style='text-align: center; color: #6c757d; padding: 30px;'>No hay movimientos en este periodo</td></tr>"
+                    html += "<tr><td colspan='7' style='text-align: center; color: #6c757d; padding: 30px;'>No hay movimientos en este periodo</td></tr>"
                 
                 html += f"""
                 </tbody>
@@ -1235,24 +1215,6 @@ def ingreso_manual_datos(clave):
                     return "❌ Acceso denegado. URL inválida.", 403
                 
                 nombre_finca, finca_id = finca_row
-                 
-                # === 🆕 MODO EDICIÓN? (AGREGAR ESTO) ===
-                edit_id = request.args.get("edit_id")
-                datos_editar = None
-                titulo_form = "📝 Nueva Actividad"
-                accion_form = f"/finca/{clave}/guardar-manual"
-                texto_boton = "✅ Guardar Registro"
-
-                if edit_id:
-                    try:
-                        cur.execute("SELECT * FROM registros WHERE id = %s AND finca_id = %s", (edit_id, finca_id))
-                        datos_editar = cur.fetchone()
-                        if datos_editar:
-                            titulo_form = "✏️ Editar Registro"
-                            accion_form = f"/finca/{clave}/actualizar-manual/{edit_id}"
-                            texto_boton = "🔄 Actualizar Registro"
-                    except Exception as e:
-                        logger.error(f"Error cargando edición: {e}")
                 
                 # === OBTENER LUGARES FRECUENTES PARA AUTO-SUGERENCIA ===
                 cur.execute("""
@@ -1633,9 +1595,7 @@ def ingreso_manual_datos(clave):
                     <!-- DETALLE -->
                     <div class="form-group" id="group-detalle">
                         <label>📦 Detalle de la Actividad <span class="required">*</span></label>
-                        <input type="text" name="detalle" id="detalle" required 
-                                placeholder="Ej: Compra de concentrado, Vacunación aftosa, Venta de 2 novillos..."
-                                value="{datos_editar[4] if datos_editar else ''}">
+                        <input type="text" name="detalle" id="detalle" required placeholder="Ej: Compra de concentrado, Vacunación aftosa, Venta de 2 novillos...">
                         <small class="error-message">El detalle es obligatorio</small>
                     </div>
                     
@@ -1643,18 +1603,12 @@ def ingreso_manual_datos(clave):
                     <div class="form-row">
                         <div class="form-group" id="group-cantidad">
                             <label>🔢 Cantidad</label>
-                            <input type="number" name="cantidad" id="cantidad" step="0.1" min="0" 
-                                    placeholder="Ej: 10"
-                                    value="{datos_editar[6] if datos_editar else ''}">
+                            <input type="number" name="cantidad" id="cantidad" step="0.1" min="0" placeholder="Ej: 10">
                             <small>Unidades, kilogramos, litros, etc.</small>
                         </div>
                         <div class="form-group" id="group-valor">
                             <label>💰 Valor Total (COP)</label>
-                            <input type="text" name="valor" id="valor" 
-                            value="{int(datos_editar[7]) if datos_editar and datos_editar[7] else '0'}" 
-                            pattern="[0-9]*" 
-                            oninput="this.value = this.value.replace(/[^0-9]/g, '')" 
-                            placeholder="Ej: 500000">
+                            <input type="text" name="valor" id="valor" value="0" pattern="[0-9]*" oninput="this.value = this.value.replace(/[^0-9]/g, '')" placeholder="Ej: 500000">
                             <small style="color: #6c757d; font-size: 0.85em; margin-top: 6px;"> Solo números. Ej: 700000 para setecientos mil </small>
                         </div>
                     </div>
@@ -1662,17 +1616,14 @@ def ingreso_manual_datos(clave):
                     <!-- LUGAR -->
                     <div class="form-group" id="group-lugar">
                         <label>📍 Lugar / Corral</label>
-                        <input type="text" name="lugar" id="lugar" 
-                                placeholder="Ej: Corral 1, Potrero Norte, Bodega..."
-                                value="{datos_editar[5] if datos_editar else ''}">
+                        <input type="text" name="lugar" id="lugar" placeholder="Ej: Corral 1, Potrero Norte, Bodega...">
                         {sugerencias_container}
                     </div>
                     
                     <!-- OBSERVACIÓN -->
                     <div class="form-group" id="group-observacion">
                         <label>📝 Observación</label>
-                        <textarea name="observacion" id="observacion" 
-                                    placeholder="Ej: marca LG01 peso 450 kg, marca LG02 peso 480 kg...">{datos_editar[9] if datos_editar else ''}</textarea>
+                        <textarea name="observacion" id="observacion" placeholder="Ej: marca LG01 peso 450 kg, marca LG02 peso 480 kg..."></textarea>
                         <small>Para animales: usa el formato <code>marca XXX peso YYY kg</code></small>
                     </div>
                     
@@ -1680,10 +1631,7 @@ def ingreso_manual_datos(clave):
                     <!-- JORNALES -->
                     <div class="form-group" id="group-jornales">
                         <label>👷 Número de Jornales</label>
-                        <input type="number" name="jornales" id="jornales" 
-                                value="{datos_editar[10] if datos_editar and datos_editar[10] else '0'}" 
-                                min="0" 
-                                placeholder="Ej: 2">
+                        <input type="number" name="jornales" id="jornales" value="0" min="0" placeholder="Ej: 2">
                         <small>Si la actividad involucra pago por jornales</small>
                     </div>
                     
@@ -2020,109 +1968,6 @@ def guardar_manual_datos(clave):
 
     except Exception as e:
         logger.error(f"❌ Error guardar manual: {e}")
-        logger.error(traceback.format_exc())
-        return f"❌ Error: {e}", 500
-# ============================================================================
-# === RUTA: PROCESAR EDICIÓN DE DATOS (UPDATE - NO INSERT) ===
-# ============================================================================
-@app.route("/finca/<clave>/actualizar-manual/<int:registro_id>", methods=["POST"])
-def actualizar_manual_datos(clave, registro_id):
-    try:
-        database_url = os.environ.get("DATABASE_URL")
-        if not database_url:
-            logger.error("❌ DATABASE_URL no configurada")
-            return "❌ DATABASE_URL no configurada", 500
-        
-        # === 1. VALIDAR FINCA (SEGURIDAD) ===
-        with psycopg2.connect(database_url) as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT nombre, id FROM fincas WHERE clave_secreta = %s", (clave,))
-                finca_row = cur.fetchone()
-                if not finca_row:
-                    logger.warning(f"⚠️ Acceso denegado para clave: {clave}")
-                    return "❌ Acceso denegado.", 403
-                nombre_finca, finca_id = finca_row
-                
-                # === 2. VERIFICAR QUE EL REGISTRO PERTENECE A ESTA FINCA ===
-                cur.execute("SELECT id FROM registros WHERE id = %s AND finca_id = %s", (registro_id, finca_id))
-                if not cur.fetchone():
-                    logger.warning(f"⚠️ Intento de editar registro {registro_id} de otra finca")
-                    return "❌ Registro no encontrado o no pertenece a esta finca.", 404
-
-        # === 3. OBTENER DATOS DEL FORMULARIO ===
-        tipo = request.form.get("tipo", "")
-        detalle = request.form.get("detalle", "").strip()
-        cantidad = request.form.get("cantidad")
-        valor = request.form.get("valor", 0)
-        lugar = request.form.get("lugar", "").strip()
-        observacion = request.form.get("observacion", "").strip()
-        jornales = request.form.get("jornales", 0)
-
-        # === 4. VALIDACIONES ===
-        if not tipo or not detalle:
-            return "❌ Tipo y detalle son obligatorios", 400
-        
-        if len(detalle) < 3:
-            return "❌ El detalle debe tener al menos 3 caracteres", 400
-        
-        # Procesar valores numéricos
-        try:
-            cantidad = float(cantidad) if cantidad else None
-        except (ValueError, TypeError):
-            cantidad = None
-            
-        try:
-            if valor:
-                valor_str = str(valor).replace('.', '').replace(',', '')
-                valor = float(valor_str) if valor_str else 0
-            else:
-                valor = 0
-        except (ValueError, TypeError):
-            valor = 0
-            
-        try:
-            jornales = int(float(jornales)) if jornales else 0
-        except (ValueError, TypeError):
-            jornales = 0
-        
-        # Validar que no sean negativos
-        if valor < 0:
-            return "❌ El valor no puede ser negativo", 400
-        if cantidad and cantidad < 0:
-            return "❌ La cantidad no puede ser negativa", 400
-        if jornales < 0:
-            return "❌ Los jornales no pueden ser negativos", 400
-
-        # === 5. ACTUALIZAR REGISTRO (UPDATE - NO INSERT) ===
-        with psycopg2.connect(database_url) as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    UPDATE registros 
-                    SET tipo_actividad = %s, accion = %s, detalle = %s, lugar = %s, 
-                        cantidad = %s, valor = %s, observacion = %s, jornales = %s
-                    WHERE id = %s AND finca_id = %s
-                """, (tipo, tipo, detalle, lugar, cantidad, valor, observacion, jornales, registro_id, finca_id))
-                
-                conn.commit()
-                
-                if cur.rowcount == 0:
-                    logger.warning(f"⚠️ No se actualizó ningún registro para ID {registro_id}")
-                    return "❌ No se pudo actualizar el registro.", 404
-
-        # === 6. GENERAR PÁGINA DE ÉXITO ===
-        html = f"""
-        <html><head><meta http-equiv="refresh" content="2;url=/finca/{clave}" /></head>
-        <body style="font-family:sans-serif; text-align:center; padding:50px;">
-            <h1 style="color:green;">✅ Registro Actualizado</h1>
-            <p>Registro #{registro_id} en {nombre_finca}</p>
-            <p>Redirigiendo al dashboard...</p>
-            <a href="/finca/{clave}">Volver ahora</a>
-        </body></html>
-        """
-        return html
-
-    except Exception as e:
-        logger.error(f"❌ Error actualizar manual: {e}")
         logger.error(traceback.format_exc())
         return f"❌ Error: {e}", 500
 
