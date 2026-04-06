@@ -919,11 +919,13 @@ def dashboard_finca(clave):
                 <tbody>
 """
                 for reg in registros:
-                    valor_str = f"${reg[5]:,.0f}" if reg[5] and reg[5] > 0 else "—"
-                    html += f"<tr><td>{reg[0]}</td><td>{reg[1]}</td><td>{reg[2]}</td><td>{reg[3]}</td><td>{reg[4] or ''}</td><td>{valor_str}</td><td>{reg[6] or ''}</td></tr>"
+                    # AHORA: reg[0]=id, reg[1]=fecha, reg[2]=tipo, reg[3]=detalle, reg[4]=lugar, reg[5]=cantidad, reg[6]=valor, reg[7]=observacion
+                    id_registro = reg[0]
+                    valor_str = f"${reg[6]:,.0f}" if reg[6] and reg[6] > 0 else "—"
+                    html += f"<tr><td>{reg[1]}</td><td>{reg[2]}</td><td>{reg[3]}</td><td>{reg[4] or ''}</td><td>{reg[5] or ''}</td><td>{valor_str}</td><td>{reg[7] or ''}</td><td><a href='/finca/{clave}/ingreso-manual?edit_id={id_registro}' style='color:#007bff; text-decoration:none;'>✏️ Editar</a></td></tr>"
                 
                 if not registros:
-                    html += "<tr><td colspan='7' style='text-align: center; color: #6c757d; padding: 30px;'>No hay movimientos en este periodo</td></tr>"
+                    html += "<tr><td colspan='8' style='text-align: center; color: #6c757d; padding: 30px;'>No hay movimientos en este periodo</td></tr>"
                 
                 html += f"""
                 </tbody>
