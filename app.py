@@ -2022,9 +2022,8 @@ def guardar_manual_datos(clave):
         logger.error(f"❌ Error guardar manual: {e}")
         logger.error(traceback.format_exc())
         return f"❌ Error: {e}", 500
-
 # ============================================================================
-# === RUTA: PROCESAR EDICIÓN DE DATOS (NUEVA - SEGURA) ===
+# === RUTA: PROCESAR EDICIÓN DE DATOS (UPDATE - NO INSERT) ===
 # ============================================================================
 @app.route("/finca/<clave>/actualizar-manual/<int:registro_id>", methods=["POST"])
 def actualizar_manual_datos(clave, registro_id):
@@ -2094,7 +2093,7 @@ def actualizar_manual_datos(clave, registro_id):
         if jornales < 0:
             return "❌ Los jornales no pueden ser negativos", 400
 
-        # === 5. ACTUALIZAR REGISTRO (UPDATE) ===
+        # === 5. ACTUALIZAR REGISTRO (UPDATE - NO INSERT) ===
         with psycopg2.connect(database_url) as conn:
             with conn.cursor() as cur:
                 cur.execute("""
