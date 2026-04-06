@@ -254,6 +254,24 @@ def dashboard_finca(clave):
                 
                 nombre_finca, finca_id = finca_row
                 
+                                # === MODO EDICIÓN? ===
+                edit_id = request.args.get("edit_id")
+                datos_editar = None
+                titulo_form = "📝 Nueva Actividad"
+                accion_form = f"/finca/{clave}/guardar-manual"
+                texto_boton = "✅ Guardar Registro"
+
+                if edit_id:
+                    try:
+                        cur.execute("SELECT * FROM registros WHERE id = %s AND finca_id = %s", (edit_id, finca_id))
+                        datos_editar = cur.fetchone()
+                        if datos_editar:
+                            titulo_form = "✏️ Editar Registro"
+                            accion_form = f"/finca/{clave}/actualizar-manual/{edit_id}"
+                            texto_boton = "🔄 Actualizar Registro"
+                    except Exception as e:
+                        logger.error(f"Error cargando edición: {e}")
+                
                 # === OBTENER VALORES ÚNICOS PARA LOS FILTROS (DROPDOWNS) ===
                 cur.execute("""
                     SELECT DISTINCT especie FROM animales
