@@ -10,7 +10,7 @@ import datetime
 import psycopg2
 import re
 import secrets
-from flask import Flask, request, send_file
+from flask import Flask, request, send_file, redirect
 from twilio.twiml.messaging_response import MessagingResponse
 
 # === AGREGAR DESPUÉS DE LOS IMPORTS ===
@@ -338,10 +338,10 @@ def dashboard_finca(clave):
                 
                 # === MOVIMIENTOS (CON FILTROS) ===
                 movimientos_query = """
-                    SELECT fecha, tipo_actividad, detalle, lugar, cantidad, valor, observacion
+                     SELECT id, fecha, tipo_actividad, detalle, lugar, cantidad, valor, observacion
                     FROM registros
                     WHERE finca_id = %s AND fecha BETWEEN %s AND %s
-                """
+                 """
                 movimientos_params = [finca_id, fecha_inicio.isoformat(), fecha_fin.isoformat()]
                 if tipo_actividad_filter:
                     movimientos_query += " AND tipo_actividad = %s"
@@ -412,8 +412,17 @@ def dashboard_finca(clave):
                     except:
                         return "—"
                 
+                # Banner de estado para eliminaciones
+                eliminado_msg = ""
+                if request.args.get("eliminado") == "ok":
+                    eliminado_msg = """<div style="background:#d4edda;color:#155724;padding:12px;border-radius:6px;margin:10px 0;border-left:4px solid #28a745;font-family:sans-serif;">✅ Registro eliminado correctamente.</div>"""
+                elif request.args.get("eliminado") == "error":
+                    eliminado_msg = """<div style="background:#f8d7da;color:#721c24;padding:12px;border-radius:6px;margin:10px 0;border-left:4px solid #dc3545;font-family:sans-serif;">❌ No se pudo eliminar el registro. Verifica permisos.</div>"""
+                
+                
                 # === GENERAR HTML ===
                 html = f"""
+                
 <!DOCTYPE html>
 <html>
 <head>
@@ -914,16 +923,26 @@ def dashboard_finca(clave):
                         <th>Cant.</th>
                         <th>Valor</th>
                         <th>Obs.</th>
+                        <th>Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
 """
                 for reg in registros:
-                    valor_str = f"${reg[5]:,.0f}" if reg[5] and reg[5] > 0 else "—"
-                    html += f"<tr><td>{reg[0]}</td><td>{reg[1]}</td><td>{reg[2]}</td><td>{reg[3]}</td><td>{reg[4] or ''}</td><td>{valor_str}</td><td>{reg[6] or ''}</td></tr>"
+                    valor_str = f"${reg[6]:,.0f}" if reg[6] and reg[6] > 0 else "—"
+                    html += f"<tr>"
+                    html += f"<td>{reg[1]}</td>"      # fecha
+                    html += f"<td>{reg[2]}</td>"      # tipo
+                    html += f"<td>{reg[3]}</td>"      # detalle
+                    html += f"<td>{reg[4]}</td>"      # lugar
+                    html += f"<td>{reg[5] or ''}</td>"# cantidad
+                    html += f"<td>{valor_str}</td>"   # valor
+                    html += f"<td>{reg[7] or ''}</td>"# observacion
+                    html += f"<td><a href='/finca/{clave}/eliminar-registro/{reg[0]}' onclick=\"return confirm('⚠️ ¿Eliminar este registro permanentemente?')\" style='color:#dc3545;text-decoration:none;font-weight:bold;font-size:1.2em;cursor:pointer;'>🗑️</a></td>"
+                    html += f"</tr>"
                 
                 if not registros:
-                    html += "<tr><td colspan='7' style='text-align: center; color: #6c757d; padding: 30px;'>No hay movimientos en este periodo</td></tr>"
+                    html += "<tr><td colspan='8' style='text-align: center; color: #6c757d; padding: 30px;'>No hay movimientos en este periodo</td></tr>"
                 
                 html += f"""
                 </tbody>
@@ -1970,6 +1989,33 @@ def guardar_manual_datos(clave):
         logger.error(f"❌ Error guardar manual: {e}")
         logger.error(traceback.format_exc())
         return f"❌ Error: {e}", 500
+
+# === RUTA: ELIMINAR REGISTRO (SOLO DUEÑO VÍA CLAVE SECRETA) ===
+@app.route("/finca/<clave>/eliminar-registro/<int:id_registro>")
+def eliminar_registro(clave, id_registro):
+    try:
+        database_url = os.environ.get("DATABASE_URL")
+        if not database_url:
+            return redirect(f"/finca/{clave}?eliminado=error")
+
+        with psycopg2.connect(database_url) as conn:
+            with conn.cursor() as cur:
+                # 1. Validar que la clave corresponde a una finca real
+                cur.execute("SELECT id FROM fincas WHERE clave_secreta = %s", (clave,))
+                finca_row = cur.fetchone()
+                if not finca_row:
+                    return redirect(f"/finca/{clave}?eliminado=error")
+                
+                finca_id = finca_row[0]
+
+                # 2. Eliminar SOLO si el registro pertenece a esta finca (protección contra manipulación de URL)
+                cur.execute("DELETE FROM registros WHERE id = %s AND finca_id = %s", (id_registro, finca_id))
+                conn.commit()
+                
+        return redirect(f"/finca/{clave}?eliminado=ok")
+    except Exception as e:
+        print(f"❌ Error al eliminar registro: {e}")
+        return redirect(f"/finca/{clave}?eliminado=error")
 
 # === INICIO DEL SERVIDOR ===
 if __name__ == "__main__":
